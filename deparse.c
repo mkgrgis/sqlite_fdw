@@ -164,6 +164,7 @@ static void sqlite_get_relation_column_alias_ids(Var *node, RelOptInfo *foreignr
 static char *sqlite_quote_identifier(const char *s, char q);
 static bool sqlite_contain_immutable_functions_walker(Node *node, void *context);
 static bool sqlite_is_valid_type(Oid type);
+int preferred_sqlite_affinity (Oid relid, int varattno);
 
 /*
  * Append remote name of specified foreign table to buf.
@@ -2079,7 +2080,16 @@ sqlite_deparse_column_ref(StringInfo buf, int varno, int varattno, PlannerInfo *
 		 * Recommended form for normalisation is someone from 1<->1 with PostgreSQL
 		 * internal storage, hence usually this will not original text data.
 		 */
-		if (!dml_context && pg_atttyp == BOOLOID)
+		if (!dml_context && ( pg_atttyp == FLOAT8OID || pg_atttyp == FLOAT4OID || pg_atttyp == NUMERICOID) )
+		{
+			elog(DEBUG2, "floatN unification for \"%s\"", colname);
+			appendStringInfoString(buf, "sqlite_fdw_float(");
+			if (qualify_col)
+				ADD_REL_QUALIFIER(buf, varno);
+			appendStringInfoString(buf, sqlite_quote_identifier(colname, '`'));
+			appendStringInfoString(buf, ")");
+		}
+		else if (!dml_context && pg_atttyp == BOOLOID)
 		{
 			elog(DEBUG2, "boolean unification for \"%s\"", colname);
 			appendStringInfoString(buf, "sqlite_fdw_bool(");
@@ -2107,6 +2117,9 @@ sqlite_deparse_column_ref(StringInfo buf, int varno, int varattno, PlannerInfo *
 	}
 }
 
+/*
+ * Get column option with optionname for a variable attribute in deparsing context
+ */
 static char *
 sqlite_deparse_column_option(int varno, int varattno, PlannerInfo *root, char *optionname)
 {
@@ -2296,6 +2309,35 @@ sqlite_deparse_update(StringInfo buf, PlannerInfo *root,
 	}
 }
 
+/* Preferred SQLite affinity from "column_type" foreign column option
+ * SQLITE_NULL if no value or no normal value
+ */
+int
+preferred_sqlite_affinity (Oid relid, int varattno)
+{
+	char	   *coltype = NULL;
+	List	   *options;
+	ListCell   *lc;
+
+	elog(DEBUG4, "sqlite_fdw : %s ", __func__);
+	if (varattno == 0)
+		return SQLITE_NULL;
+
+	options = GetForeignColumnOptions(relid, varattno);
+	foreach(lc, options)
+	{
+		DefElem	*def = (DefElem *) lfirst(lc);
+
+		if (strcmp(def->defname, "column_type") == 0)
+		{
+			coltype = defGetString(def);
+			break;
+		}
+		elog(DEBUG4, "column type = %s", coltype);
+	}
+	return sqlite_affinity_code(coltype);
+}
+
 /*
  * deparse remote UPDATE statement
  *
@@ -2346,7 +2388,11 @@ sqlite_deparse_direct_update_sql(StringInfo buf, PlannerInfo *root,
 	forboth(lc, targetlist, lc2, targetAttrs)
 	{
 		int			attnum = lfirst_int(lc2);
+		int			preferred_affinity = SQLITE_NULL;
 		TargetEntry *tle;
+		RangeTblEntry *rte;
+		bool		special_affinity = false;
+		Oid			pg_attyp;
 #if (PG_VERSION_NUM >= 140000)
 		tle = lfirst_node(TargetEntry, lc);
 
@@ -2366,8 +2412,27 @@ sqlite_deparse_direct_update_sql(StringInfo buf, PlannerInfo *root,
 		first = false;
 
 		sqlite_deparse_column_ref(buf, rtindex, attnum, root, false, true);
+
+		/* Get RangeTblEntry from array in PlannerInfo. */
+		rte = planner_rt_fetch(rtindex, root);
+		pg_attyp = get_atttype(rte->relid, attnum);
+		preferred_affinity = preferred_sqlite_affinity(rte->relid, attnum);
+
 		appendStringInfoString(buf, " = ");
+
+		special_affinity = (pg_attyp == UUIDOID && preferred_affinity == SQLITE3_TEXT) ||
+						   (pg_attyp == TIMESTAMPOID && preferred_affinity == SQLITE_INTEGER);
+		if (special_affinity)
+		{
+			elog(DEBUG3, "sqlite_fdw : aff %d\n", preferred_affinity);
+			if (pg_attyp == UUIDOID && preferred_affinity == SQLITE3_TEXT)
+				appendStringInfo(buf, "sqlite_fdw_uuid_str(");
+			if (pg_attyp == TIMESTAMPOID && preferred_affinity == SQLITE_INTEGER)
+				appendStringInfo(buf, "strftime(");
+		}
 		sqlite_deparse_expr((Expr *) tle->expr, &context);
+    	if (special_affinity)
+			appendStringInfoString(buf, ")");
 	}
 
 	sqlite_reset_transmission_modes(nestlevel);
@@ -2593,12 +2658,26 @@ sqlite_deparse_const(Const *node, deparse_expr_cxt *context, int showtype)
 		case INT4OID:
 		case INT8OID:
 		case OIDOID:
+			{
+				extval = OidOutputFunctionCall(typoutput, node->constvalue);
+				if (strspn(extval, "0123456789+-eE.") == strlen(extval))
+				{
+					if (extval[0] == '+' || extval[0] == '-')
+						appendStringInfo(buf, "(%s)", extval);
+					else
+						appendStringInfoString(buf, extval);
+				}
+				else
+				ereport(ERROR, (errcode(ERRCODE_FDW_INVALID_DATA_TYPE),
+						errmsg("Invalid input syntax. Invalid characters in number"),
+						errhint("Value: %s", extval)));
+			}
+			break;
 		case FLOAT4OID:
 		case FLOAT8OID:
 		case NUMERICOID:
 			{
 				extval = OidOutputFunctionCall(typoutput, node->constvalue);
-
 				/*
 				 * No need to quote unless it's a special value such as 'NaN' or 'Infinity'.
 				 * See comments in get_const_expr().
@@ -2610,8 +2689,32 @@ sqlite_deparse_const(Const *node, deparse_expr_cxt *context, int showtype)
 					else
 						appendStringInfoString(buf, extval);
 				}
+				else if (strcasecmp(extval, "NaN") == 0)
+				{
+				 /* https://stackoverflow.com/questions/20619957
+				 * https://github.com/sqlite/sqlite/blob/6db0b11e078f4b651f0cf00f845f3d77700c1a3a/src/vdbemem.c#L973
+				 * appendStringInfo(buf, "NULL");
+				 */
+				appendStringInfo(buf, "'NaN'");
+				}
 				else
-					appendStringInfo(buf, "\'%s\'", extval);
+				{
+					if (extval[0] == '-')
+						appendStringInfo(buf, "(-");
+					if (extval[0] == '+')
+						appendStringInfo(buf, "(+");
+
+					if (strcasecmp(extval, "Inf") == 0 ||
+						strcasecmp(extval, "Infinity") == 0 ||
+						strcasecmp(extval + 1, "Inf") == 0 ||
+						strcasecmp(extval + 1, "Infinity") == 0)
+					{
+						appendStringInfo(buf, "9e999");
+					}
+
+					if (extval[0] == '-' || extval[0] == '+')
+						appendStringInfo(buf, ")");
+				}
 			}
 			break;
 		case BITOID:
@@ -2622,7 +2725,7 @@ sqlite_deparse_const(Const *node, deparse_expr_cxt *context, int showtype)
 				{
 					ereport(ERROR, (errcode(ERRCODE_FDW_INVALID_DATA_TYPE),
 							errmsg("SQLite FDW dosens't support very long bit/varbit data"),
-							errhint("bit length %ld, maxmum %ld", strlen(extval), SQLITE_FDW_BIT_DATATYPE_BUF_SIZE - 1)));
+							errhint("bit length %ld, maximum %ld", strlen(extval), SQLITE_FDW_BIT_DATATYPE_BUF_SIZE - 1)));
 				}
 				appendStringInfo(buf, "%lld", binstr2int64(extval));
 			}
@@ -2671,12 +2774,8 @@ sqlite_deparse_const(Const *node, deparse_expr_cxt *context, int showtype)
 			}
 			break;
 		case UUIDOID:
-			/* always deparse to BLOB because this is internal PostgreSQL storage
-			 * the string for BYTEA always seems to be in the format "\\x##"
-			 * where # is a hex digit, Even if the value passed in is
-			 * 'hi'::bytea we will receive "\x6869". Making this assumption
-			 * allows us to quickly convert postgres escaped strings to sqlite
-			 * ones for comparison
+			/* always deparse to BLOB, in case of UPDATE with text affinity
+			 * transformation function will be added
 			 */
  			{
 				int i = 0;
@@ -2976,7 +3075,15 @@ sqlite_deparse_scalar_array_op_expr(ScalarArrayOpExpr *node, deparse_expr_cxt *c
 					switch (c->consttype)
 					{
 						case INT4ARRAYOID:
+						case INT8ARRAYOID:
+						case INT2ARRAYOID:
+						case BOOLARRAYOID:
 						case OIDARRAYOID:
+							isstr = false;
+							break;
+						case NUMERICARRAYOID:
+						case FLOAT4ARRAYOID:
+						case FLOAT8ARRAYOID:
 							isstr = false;
 							break;
 						default:

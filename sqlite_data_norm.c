@@ -66,10 +66,12 @@
 #include <assert.h>
 #include <ctype.h>
 #include <string.h>
+#include <math.h>
 
 #include "sqlite3.h"
 #include "postgres.h"
 #include "sqlite_fdw.h"
+#include "utils/uuid.h"
 
 static void error_helper(sqlite3* db, int rc);
 
@@ -142,21 +144,68 @@ sqlite_fdw_uuid_blob (const unsigned char* s0, unsigned char* Blob)
  */
 
 /*
- * uuid_str converts a UUID X into a well-formed UUID string.
- * X can be either a string or a blob.
- *
- * static void uuid_str(sqlite3_context* context, int argc, sqlite3_value** argv) {
- *	unsigned char aBlob[16];
- *	unsigned char zs[37];
- *	const unsigned char* pBlob;
- *	(void)argc;
- *	pBlob = sqlite_fdw_data_norm_uuid_input_to_blob(argv[0], aBlob);
- *	if (pBlob == 0)
- *		return;
- *	sqlite_fdw_data_norm_uuid_blob_to_str(pBlob, zs);
- *	sqlite3_result_text(context, (char*)zs, 36, SQLITE_TRANSIENT);
- *}
+ * aBlob to RFC UUID string with 36 characters
  */
+
+static void
+sqlite3UuidBlobToStr( const unsigned char *aBlob, unsigned char *zs)
+{
+	static const char hex_dig[] = "0123456789abcdef";
+	int i, k;
+	unsigned char x;
+	k = 0;
+	for(i=0, k=0x550; i<UUID_LEN; i++, k=k>>1)
+	{
+		if( k&1 )
+		{
+			zs[0] = '-';
+			zs++;
+		}
+		x = aBlob[i];
+		zs[0] = hex_dig[x>>4];
+		zs[1] = hex_dig[x&0xf];
+		zs += 2;
+	}
+	*zs = 0;
+}
+
+/*
+ * Converts argument BLOB-UUID into a well-formed UUID string.
+ * X can be either a string or a blob.
+ */
+static void
+sqlite_fdw_uuid_str(sqlite3_context* context, int argc, sqlite3_value** argv)
+{
+	unsigned char aBlob[UUID_LEN];
+	const unsigned char* pBlob;
+	unsigned char zs[UUID_LEN * 2 + 1];
+	sqlite3_value* arg = argv[0];
+	int t = sqlite3_value_type(arg);
+
+	if (t == SQLITE_BLOB)
+	{
+		pBlob = sqlite3_value_blob(arg);
+	}
+	if (t == SQLITE3_TEXT)
+	{
+		const unsigned char* txt = sqlite3_value_text(arg);
+		if (sqlite_fdw_uuid_blob(txt, aBlob))
+			pBlob = aBlob;
+		else
+		{
+			sqlite3_result_null(context);
+			return;
+		}
+	}
+	if (t != SQLITE_BLOB)
+	{
+		sqlite3_result_null(context);
+		return;
+	}
+
+	sqlite3UuidBlobToStr(pBlob, zs);
+	sqlite3_result_text(context, (char*)zs, 36, SQLITE_TRANSIENT);
+}
 
 /*
  * uuid_blob normalize text or blob UUID argv[0] into a 16-byte blob.
@@ -287,6 +336,77 @@ sqlite_fdw_data_norm_bool(sqlite3_context* context, int argc, sqlite3_value** ar
 }
 
 /*
+ * ISO:SQL valid float/double precision values with text affinity such as Infinity or Inf or NaN
+ * will be treated as float like in PostgreSQL console input
+ * Note: SQLite also have Infinity support with real affinity, but this values isn't suitable for insert,
+ * there is any overflow number instead
+ */
+static void
+sqlite_fdw_data_norm_float(sqlite3_context* context, int argc, sqlite3_value** argv)
+{
+	static const char * infs = "Inf";
+	static const char * infl = "Infinity";
+	sqlite3_value* arg = argv[0];
+	int dt = sqlite3_value_type(arg);
+	int l;
+
+	if (dt == SQLITE_FLOAT)
+	{
+		/* The fastest call because expected very often */
+		sqlite3_result_value(context, arg);
+		return;
+	}
+	if (dt != SQLITE3_TEXT && dt != SQLITE_BLOB )
+	{
+		/* INT, NULL*/
+		sqlite3_result_value(context, arg);
+		return;
+	}
+
+	l = sqlite3_value_bytes(arg);
+	if (l > strlen(infl) + 2 || l < strlen(infs))
+	{
+		sqlite3_result_value(context, arg);
+		return;
+	}
+
+	{
+		static const char * minfs = "-Inf";
+		static const char * minfl = "-Infinity";
+		static const char * pinfs = "+Inf";
+		static const char * pinfl = "+Infinity";
+		const char* t = (const char*)sqlite3_value_text(arg);
+
+		if (strcasecmp(t, infs) == 0 ||
+			strcasecmp(t, pinfs) == 0 ||
+			strcasecmp(t, infl) == 0 ||
+			strcasecmp(t, pinfl) == 0)
+		{
+			sqlite3_result_double(context, INFINITY);
+			return;
+		}
+		if (strcasecmp(t, minfs) == 0 ||
+			strcasecmp(t, minfl) == 0)
+		{
+			sqlite3_result_double(context, -INFINITY);
+			return;
+		}
+		/* Limited NaN detecting there is in sqlite_query.c file only
+		 * No NaN processing here because of SQLite NULL, see
+		 * https://github.com/sqlite/sqlite/blob/6db0b11e078f4b651f0cf00f845f3d77700c1a3a/src/vdbemem.c#L973
+		 * Please uncomment if SQLite behaviour will changed
+		 *
+		 *if (strcasecmp(t, "NaN") == 0)
+		 *{
+		 *	sqlite3_result_double(context, NAN);
+		 *	return;
+		 *}
+		 */
+	}
+	sqlite3_result_value(context, arg);
+}
+
+/*
  * Makes pg error from SQLite error.
  * Interrupts normal executing, no need return after place of calling
  */
@@ -309,6 +429,12 @@ sqlite_fdw_data_norm_functs_init(sqlite3* db)
 	if (rc != SQLITE_OK)
 		error_helper(db, rc);
 	rc = sqlite3_create_function(db, "sqlite_fdw_bool", 1, det_flags, 0, sqlite_fdw_data_norm_bool, 0, 0);
+	if (rc != SQLITE_OK)
+		error_helper(db, rc);
+	rc = sqlite3_create_function(db, "sqlite_fdw_uuid_str", 1, det_flags, 0, sqlite_fdw_uuid_str, 0, 0);
+	if (rc != SQLITE_OK)
+		error_helper(db, rc);
+	rc = sqlite3_create_function(db, "sqlite_fdw_float", 1, det_flags, 0, sqlite_fdw_data_norm_float, 0, 0);
 	if (rc != SQLITE_OK)
 		error_helper(db, rc);
 
