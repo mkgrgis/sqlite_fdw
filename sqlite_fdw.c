@@ -1891,14 +1891,17 @@ sqlitePlanForeignModify(PlannerInfo *root,
 	CmdType			operation = plan->operation;
 	RangeTblEntry  *rte = planner_rt_fetch(resultRelation, root);
 	Relation		rel;
-	List		   *targetAttrs = NULL;
 	StringInfoData  sql;
+	List		   *targetAttrs = NULL;
+	List		   *withCheckOptionList = NIL;
+	List		   *returningList = NIL;
+	List		   *retrieved_attrs = NIL;
+	bool			doNothing = false;
+	int				values_end_len = -1;
 	Oid				foreignTableId;
 	TupleDesc		tupdesc;
 	int				i;
 	List		   *condAttr = NULL;
-	bool			doNothing = false;
-	int				values_end_len = -1;
 
 	elog(DEBUG1, "sqlite_fdw : %s", __func__);
 
@@ -1958,10 +1961,24 @@ sqlitePlanForeignModify(PlannerInfo *root,
 		}
 	}
 
+	/*
+	 * Extract the relevant WITH CHECK OPTION list if any.
+	 */
+	if (plan->withCheckOptionLists)
+		withCheckOptionList = (List *) list_nth(plan->withCheckOptionLists,
+												subplan_index);
+
+	/*
+	 * Extract the relevant RETURNING list if any.
+	 */
 	if (plan->returningLists)
-		ereport(ERROR,
-				(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
-				 errmsg("RETURNING clause is not supported")));
+		returningList = (List *) list_nth(plan->returningLists, subplan_index);
+
+	/*if (plan->returningLists)
+	 *	ereport(ERROR,
+	 *		(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+	 *			 errmsg("RETURNING clause is not supported")));
+	 */
 
 	/*
 	 * ON CONFLICT DO UPDATE and DO NOTHING case with inference specification
@@ -2005,18 +2022,29 @@ sqlitePlanForeignModify(PlannerInfo *root,
 	switch (operation)
 	{
 		case CMD_INSERT:
-			sqlite_deparse_insert(&sql, root, resultRelation, rel, targetAttrs, doNothing, &values_end_len);
+			sqlite_deparseInsertSql(&sql, root, resultRelation, rel,
+							 targetAttrs, doNothing,
+							 withCheckOptionList, returningList,
+							 &retrieved_attrs, &values_end_len);
 			break;
 		case CMD_UPDATE:
-			sqlite_deparse_update(&sql, root, resultRelation, rel, targetAttrs, condAttr);
+			sqlite_deparseUpdateSql(&sql, root, resultRelation, rel,
+							 targetAttrs,
+							 withCheckOptionList, returningList,
+							 &retrieved_attrs,
+							 condAttr);
 			break;
 		case CMD_DELETE:
-			sqlite_deparse_delete(&sql, root, resultRelation, rel, condAttr);
+			sqlite_deparseDeleteSql(&sql, root, resultRelation, rel,
+							 returningList,
+							 &retrieved_attrs,
+							 condAttr);
 			break;
 		default:
 			elog(ERROR, "unexpected operation: %d", (int) operation);
 			break;
 	}
+
 	table_close(rel, NoLock);
 	return list_make3(makeString(sql.data), targetAttrs, makeInteger(values_end_len));
 }

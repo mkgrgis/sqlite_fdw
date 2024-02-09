@@ -124,8 +124,16 @@ static void sqlite_print_remote_param(int paramindex, Oid paramtype, int32 param
 static void sqlite_print_remote_placeholder(Oid paramtype, int32 paramtypmod,
 											deparse_expr_cxt *context);
 static void sqlite_deparse_relation(StringInfo buf, Relation rel);
-static void sqlite_deparse_target_list(StringInfo buf, PlannerInfo *root, Index rtindex, Relation rel,
-									   Bitmapset *attrs_used, bool qualify_col, List **retrieved_attrs, bool is_concat, bool check_null);
+static void sqlite_deparseTargetList(StringInfo buf,
+							  PlannerInfo *root,
+							  Index rtindex,
+							  Relation rel,
+							  bool is_returning,
+							  Bitmapset *attrs_used,
+							  bool qualify_col,
+							  List **retrieved_attrs,
+							  bool is_concat,
+							  bool check_null);
 static void sqlite_deparse_column_ref(StringInfo buf, int varno, int varattno, PlannerInfo *root, bool qualify_col, bool dml_context);
 static void sqlite_deparse_select(List *tlist, List **retrieved_attrs, deparse_expr_cxt *context);
 static void sqlite_deparse_case_expr(CaseExpr *node, deparse_expr_cxt *context);
@@ -1299,7 +1307,7 @@ sqlite_deparse_select(List *tlist, List **retrieved_attrs, deparse_expr_cxt *con
 		 */
 		Relation	rel = table_open(rte->relid, NoLock);
 
-		sqlite_deparse_target_list(buf, root, foreignrel->relid, rel, fpinfo->attrs_used, false, retrieved_attrs, false, false);
+		sqlite_deparseTargetList(buf, root, foreignrel->relid, rel, false, fpinfo->attrs_used, false, retrieved_attrs, false, false);
 
 		table_close(rel, NoLock);
 	}
@@ -1661,17 +1669,71 @@ sqlite_deparse_range_tbl_ref(StringInfo buf, PlannerInfo *root, RelOptInfo *fore
 }
 
 /*
+ * Add a RETURNING clause, if needed, to an INSERT/UPDATE/DELETE.
+ */
+static void
+sqlite_deparseReturningList(StringInfo buf, PlannerInfo *root,
+					 Index rtindex, Relation rel,
+					 bool trig_after_row,
+					 List *withCheckOptionList,
+					 List *returningList,
+					 List **retrieved_attrs)
+{
+	Bitmapset  *attrs_used = NULL;
+
+	elog(DEBUG3, "sqlite_fdw : %s", __func__);
+	if (trig_after_row)
+	{
+		/* whole-row reference acquires all non-system columns */
+		attrs_used =
+			bms_make_singleton(0 - FirstLowInvalidHeapAttributeNumber);
+	}
+
+	if (withCheckOptionList != NIL)
+	{
+		/*
+		 * We need the attrs, non-system and system, mentioned in the local
+		 * query's WITH CHECK OPTION list.
+		 *
+		 * Note: we do this to ensure that WCO constraints will be evaluated
+		 * on the data actually inserted/updated on the remote side, which
+		 * might differ from the data supplied by the core code, for example
+		 * as a result of remote triggers.
+		 */
+		pull_varattnos((Node *) withCheckOptionList, rtindex,
+					   &attrs_used);
+	}
+
+	if (returningList != NIL)
+	{
+		/*
+		 * We need the attrs, non-system and system, mentioned in the local
+		 * query's RETURNING list.
+		 */
+		pull_varattnos((Node *) returningList, rtindex,
+					   &attrs_used);
+	}
+	if (attrs_used != NULL)
+	{
+		sqlite_deparseTargetList(buf, root, rtindex, rel, true, attrs_used, false,
+						  retrieved_attrs, false, false);
+	}
+	else
+		*retrieved_attrs = NIL;
+}
+
+/*
  * deparse remote INSERT statement
  *
  * The statement text is appended to buf, and we also create an integer List
  * of the columns being retrieved by RETURNING (if any), which is returned
  * to *retrieved_attrs.
  */
-void
-sqlite_deparse_insert(StringInfo buf, PlannerInfo *root,
-					  Index rtindex, Relation rel,
-					  List *targetAttrs, bool doNothing,
-					  int *values_end_len)
+void sqlite_deparseInsertSql(StringInfo buf, PlannerInfo *root,
+							 Index rtindex, Relation rel,
+							 List *targetAttrs, bool doNothing,
+							 List *withCheckOptionList, List *returningList,
+							 List **retrieved_attrs, int *values_end_len)
 {
 #if PG_VERSION_NUM >= 140000
 	TupleDesc	tupdesc = RelationGetDescr(rel);
@@ -1681,6 +1743,7 @@ sqlite_deparse_insert(StringInfo buf, PlannerInfo *root,
 	bool		first;
 	ListCell   *lc;
 
+	elog(DEBUG3, "sqlite_fdw : %s", __func__);
 	appendStringInfo(buf, "INSERT %sINTO ", doNothing ? "OR IGNORE " : "");
 	sqlite_deparse_relation(buf, rel);
 
@@ -1763,6 +1826,13 @@ sqlite_deparse_insert(StringInfo buf, PlannerInfo *root,
 	else
 		appendStringInfoString(buf, " DEFAULT VALUES");
 	*values_end_len = buf->len;
+
+	if (doNothing)
+		appendStringInfoString(buf, " ON CONFLICT DO NOTHING");
+
+	sqlite_deparseReturningList(buf, root, rtindex, rel,
+								rel->trigdesc && rel->trigdesc->trig_insert_after_row,
+								withCheckOptionList, returningList, retrieved_attrs);
 }
 
 #if PG_VERSION_NUM >= 140000
@@ -1820,6 +1890,250 @@ sqlite_rebuild_insert(StringInfo buf, Relation rel, char *orig_query,
 }
 #endif
 
+/*
+ * deparse remote UPDATE statement
+ *
+ * The statement text is appended to buf, and we also create an integer List
+ * of the columns being retrieved by RETURNING (if any), which is returned
+ * to *retrieved_attrs.
+ */
+void
+sqlite_deparseUpdateSql(StringInfo buf, PlannerInfo *root,
+						 Index rtindex, Relation rel,
+						 List *targetAttrs,
+						 List *withCheckOptionList, List *returningList,
+						 List **retrieved_attrs,
+						 List *condAttr)
+{
+#if PG_VERSION_NUM >= 140000
+	TupleDesc	tupdesc = RelationGetDescr(rel);
+#endif
+	AttrNumber	pindex;
+	bool		first;
+	ListCell   *lc;
+	int			i;
+
+	elog(DEBUG3, "sqlite_fdw : %s", __func__);
+	appendStringInfoString(buf, "UPDATE ");
+	sqlite_deparse_relation(buf, rel);
+	appendStringInfoString(buf, " SET ");
+
+	pindex = 2;
+	first = true;
+	foreach(lc, targetAttrs)
+	{
+		int			attnum = lfirst_int(lc);
+#if PG_VERSION_NUM >= 140000
+		Form_pg_attribute attr = TupleDescAttr(tupdesc, attnum - 1);
+
+		if (!attr->attgenerated)
+		{
+#endif
+			if (!first)
+				appendStringInfoString(buf, ", ");
+			first = false;
+			sqlite_deparse_column_ref(buf, rtindex, attnum, root, false, true);
+			appendStringInfo(buf, " = ?");
+			pindex++;
+#if PG_VERSION_NUM >= 140000
+		}
+#endif
+	}
+	i = 0;
+	foreach(lc, condAttr)
+	{
+		int			attnum = lfirst_int(lc);
+
+		appendStringInfo(buf, i == 0 ? " WHERE " : " AND ");
+		sqlite_deparse_column_ref(buf, rtindex, attnum, root, false, true);
+		appendStringInfo(buf, "=?");
+		i++;
+	}
+	sqlite_deparseReturningList(buf, root, rtindex, rel,
+								rel->trigdesc && rel->trigdesc->trig_update_after_row,
+								withCheckOptionList, returningList, retrieved_attrs);
+}
+
+/*
+ * deparse remote UPDATE statement
+ *
+ * 'buf' is the output buffer to append the statement to 'rtindex' is the RT
+ * index of the associated target relation 'rel' is the relation descriptor
+ * for the target relation 'foreignrel' is the RelOptInfo for the target
+ * relation or the join relation containing all base relations in the query
+ * 'targetlist' is the tlist of the underlying foreign-scan plan node
+ * 'targetAttrs' is the target columns of the UPDATE 'remote_conds' is the
+ * qual clauses that must be evaluated remotely '*params_list' is an output
+ * list of exprs that will become remote Params '*retrieved_attrs' is an
+ * output list of integers of columns being retrieved by RETURNING (if any)
+ */
+void
+sqlite_deparse_direct_update_sql(StringInfo buf, PlannerInfo *root,
+								 Index rtindex, Relation rel,
+								 RelOptInfo *foreignrel,
+								 List *targetlist,
+								 List *targetAttrs,
+								 List *remote_conds,
+								 List **params_list,
+								 List **retrieved_attrs)
+{
+	deparse_expr_cxt context;
+	int			nestlevel;
+	bool		first;
+	ListCell   *lc;
+	ListCell   *lc2;
+
+	elog(DEBUG3, "sqlite_fdw : %s\n", __func__);
+	/* Set up context struct for recursion */
+	context.root = root;
+	context.foreignrel = foreignrel;
+	context.scanrel = foreignrel;
+	context.buf = buf;
+	context.params_list = params_list;
+
+	appendStringInfoString(buf, "UPDATE ");
+	sqlite_deparse_relation(buf, rel);
+	if (IS_JOIN_REL(foreignrel))
+		appendStringInfo(buf, " %s%d", REL_ALIAS_PREFIX, rtindex);
+	appendStringInfoString(buf, " SET ");
+
+	/* Make sure any constants in the exprs are printed portably */
+	nestlevel = sqlite_set_transmission_modes();
+
+	first = true;
+	forboth(lc, targetlist, lc2, targetAttrs)
+	{
+		int			attnum = lfirst_int(lc2);
+		TargetEntry *tle;
+#if (PG_VERSION_NUM >= 140000)
+		tle = lfirst_node(TargetEntry, lc);
+
+		/* update's new-value expressions shouldn't be resjunk */
+		Assert(!tle->resjunk);
+#else
+		(void) lc;
+		tle = get_tle_by_resno(targetlist, attnum);
+#endif
+
+		if (!tle)
+			elog(ERROR, "attribute number %d not found in UPDATE targetlist",
+				 attnum);
+
+		if (!first)
+			appendStringInfoString(buf, ", ");
+		first = false;
+
+		sqlite_deparse_column_ref(buf, rtindex, attnum, root, false, true);
+		appendStringInfoString(buf, " = ");
+		sqlite_deparse_expr((Expr *) tle->expr, &context);
+	}
+
+	sqlite_reset_transmission_modes(nestlevel);
+
+	if (IS_JOIN_REL(foreignrel))
+	{
+		List	   *ignore_conds = NIL;
+
+		appendStringInfo(buf, " FROM ");
+		sqlite_deparse_from_expr_for_rel(buf, root, foreignrel, true, rtindex,
+										 &ignore_conds, params_list);
+		remote_conds = list_concat(remote_conds, ignore_conds);
+	}
+
+	if (remote_conds)
+	{
+		appendStringInfoString(buf, " WHERE ");
+		sqlite_append_conditions(remote_conds, &context);
+	}
+}
+
+/*
+ * deparse remote DELETE statement
+ *
+ * The statement text is appended to buf, and we also create an integer List
+ * of the columns being retrieved by RETURNING (if any), which is returned
+ * to *retrieved_attrs.
+ */
+void
+sqlite_deparseDeleteSql(StringInfo buf, PlannerInfo *root,
+						 Index rtindex, Relation rel,
+						 List *returningList,
+						 List **retrieved_attrs,
+						 List *condAttr)
+{
+	int			i = 0;
+	ListCell   *lc;
+
+	elog(DEBUG3, "sqlite_fdw : %s", __func__);
+	appendStringInfoString(buf, "DELETE FROM ");
+	sqlite_deparse_relation(buf, rel);
+	foreach(lc, condAttr)
+	{
+		int			attnum = lfirst_int(lc);
+
+		appendStringInfo(buf, i == 0 ? " WHERE " : " AND ");
+		sqlite_deparse_column_ref(buf, rtindex, attnum, root, false, true);
+		appendStringInfo(buf, "=?");
+		i++;
+	}
+	sqlite_deparseReturningList(buf, root, rtindex, rel,
+								rel->trigdesc && rel->trigdesc->trig_delete_after_row,
+								NIL, returningList, retrieved_attrs);
+}
+
+/*
+ * deparse remote DELETE statement
+ *
+ * 'buf' is the output buffer to append the statement to 'rtindex' is the RT
+ * index of the associated target relation 'rel' is the relation descriptor
+ * for the target relation 'foreignrel' is the RelOptInfo for the target
+ * relation or the join relation containing all base relations in the query
+ * 'remote_conds' is the qual clauses that must be evaluated remotely
+ * '*params_list' is an output list of exprs that will become remote Params
+ * '*retrieved_attrs' is an output list of integers of columns being
+ * retrieved by RETURNING (if any)
+ */
+void
+sqlite_deparse_direct_delete_sql(StringInfo buf, PlannerInfo *root,
+								 Index rtindex, Relation rel,
+								 RelOptInfo *foreignrel,
+								 List *remote_conds,
+								 List **params_list,
+								 List **retrieved_attrs)
+{
+	deparse_expr_cxt context;
+
+	elog(DEBUG1, "sqlite_fdw : %s", __func__);
+
+	/* Set up context struct for recursion */
+	context.root = root;
+	context.foreignrel = foreignrel;
+	context.scanrel = foreignrel;
+	context.buf = buf;
+	context.params_list = params_list;
+
+	appendStringInfoString(buf, "DELETE FROM ");
+	sqlite_deparse_relation(buf, rel);
+	if (IS_JOIN_REL(foreignrel))
+		appendStringInfo(buf, " %s%d", REL_ALIAS_PREFIX, rtindex);
+
+	if (IS_JOIN_REL(foreignrel))
+	{
+		List	   *ignore_conds = NIL;
+
+		appendStringInfo(buf, " USING ");
+		sqlite_deparse_from_expr_for_rel(buf, root, foreignrel, true, rtindex,
+										 &ignore_conds, params_list);
+		remote_conds = list_concat(remote_conds, ignore_conds);
+	}
+
+	if (remote_conds)
+	{
+		appendStringInfoString(buf, " WHERE ");
+		sqlite_append_conditions(remote_conds, &context);
+	}
+}
+
 void
 sqlite_deparse_analyze(StringInfo sql, char *dbname, char *relname)
 {
@@ -1833,22 +2147,23 @@ sqlite_deparse_analyze(StringInfo sql, char *dbname, char *relname)
  * Emit a target list that retrieves the columns specified in attrs_used.
  * This is used for both SELECT and RETURNING targetlists.
  */
-static void
-sqlite_deparse_target_list(StringInfo buf,
-						   PlannerInfo *root,
-						   Index rtindex,
-						   Relation rel,
-						   Bitmapset *attrs_used,
-						   bool qualify_col,
-						   List **retrieved_attrs,
-						   bool is_concat,
-						   bool check_null)
+static void sqlite_deparseTargetList(StringInfo buf,
+							  PlannerInfo *root,
+							  Index rtindex,
+							  Relation rel,
+							  bool is_returning,
+							  Bitmapset *attrs_used,
+							  bool qualify_col,
+							  List **retrieved_attrs,
+							  bool is_concat,
+							  bool check_null)
 {
 	TupleDesc	tupdesc = RelationGetDescr(rel);
 	bool		have_wholerow;
 	bool		first;
 	int			i;
 
+	elog(DEBUG3, "sqlite_fdw : %s", __func__);
 	/* If there's a whole-row reference, we'll need all the columns. */
 	have_wholerow = bms_is_member(0 - FirstLowInvalidHeapAttributeNumber,
 								  attrs_used);
@@ -1876,6 +2191,8 @@ sqlite_deparse_target_list(StringInfo buf,
 				else
 					appendStringInfoString(buf, ", ");
 			}
+			else if (is_returning)
+				appendStringInfoString(buf, " RETURNING ");
 			else if (is_concat)
 				appendStringInfoString(buf, "COALESCE(");
 			else if (check_null)
@@ -2020,12 +2337,12 @@ sqlite_deparse_column_ref(StringInfo buf, int varno, int varattno, PlannerInfo *
 		 * would be true.
 		 */
 		appendStringInfoString(buf, "CASE WHEN ");
-		sqlite_deparse_target_list(buf, root, varno, rel, attrs_used, qualify_col,
+		sqlite_deparseTargetList(buf, root, varno, rel,  false, attrs_used, qualify_col,
 								   &retrieved_attrs, false, true);
 		appendStringInfoString(buf, "THEN ");
 
 		appendStringInfoString(buf, "(\"(\" || ");
-		sqlite_deparse_target_list(buf, root, varno, rel, attrs_used, qualify_col,
+		sqlite_deparseTargetList(buf, root, varno, rel,  false, attrs_used, qualify_col,
 								   &retrieved_attrs, true, false);
 		appendStringInfoString(buf, "|| \")\")");
 		appendStringInfoString(buf, " END");
@@ -2297,99 +2614,6 @@ sqlite_deparse_update(StringInfo buf, PlannerInfo *root,
 }
 
 /*
- * deparse remote UPDATE statement
- *
- * 'buf' is the output buffer to append the statement to 'rtindex' is the RT
- * index of the associated target relation 'rel' is the relation descriptor
- * for the target relation 'foreignrel' is the RelOptInfo for the target
- * relation or the join relation containing all base relations in the query
- * 'targetlist' is the tlist of the underlying foreign-scan plan node
- * 'targetAttrs' is the target columns of the UPDATE 'remote_conds' is the
- * qual clauses that must be evaluated remotely '*params_list' is an output
- * list of exprs that will become remote Params '*retrieved_attrs' is an
- * output list of integers of columns being retrieved by RETURNING (if any)
- */
-void
-sqlite_deparse_direct_update_sql(StringInfo buf, PlannerInfo *root,
-								 Index rtindex, Relation rel,
-								 RelOptInfo *foreignrel,
-								 List *targetlist,
-								 List *targetAttrs,
-								 List *remote_conds,
-								 List **params_list,
-								 List **retrieved_attrs)
-{
-	deparse_expr_cxt context;
-	int			nestlevel;
-	bool		first;
-	ListCell   *lc;
-	ListCell   *lc2;
-
-	elog(DEBUG3, "sqlite_fdw : %s\n", __func__);
-	/* Set up context struct for recursion */
-	context.root = root;
-	context.foreignrel = foreignrel;
-	context.scanrel = foreignrel;
-	context.buf = buf;
-	context.params_list = params_list;
-
-	appendStringInfoString(buf, "UPDATE ");
-	sqlite_deparse_relation(buf, rel);
-	if (IS_JOIN_REL(foreignrel))
-		appendStringInfo(buf, " %s%d", REL_ALIAS_PREFIX, rtindex);
-	appendStringInfoString(buf, " SET ");
-
-	/* Make sure any constants in the exprs are printed portably */
-	nestlevel = sqlite_set_transmission_modes();
-
-	first = true;
-	forboth(lc, targetlist, lc2, targetAttrs)
-	{
-		int			attnum = lfirst_int(lc2);
-		TargetEntry *tle;
-#if (PG_VERSION_NUM >= 140000)
-		tle = lfirst_node(TargetEntry, lc);
-
-		/* update's new-value expressions shouldn't be resjunk */
-		Assert(!tle->resjunk);
-#else
-		(void) lc;
-		tle = get_tle_by_resno(targetlist, attnum);
-#endif
-
-		if (!tle)
-			elog(ERROR, "attribute number %d not found in UPDATE targetlist",
-				 attnum);
-
-		if (!first)
-			appendStringInfoString(buf, ", ");
-		first = false;
-
-		sqlite_deparse_column_ref(buf, rtindex, attnum, root, false, true);
-		appendStringInfoString(buf, " = ");
-		sqlite_deparse_expr((Expr *) tle->expr, &context);
-	}
-
-	sqlite_reset_transmission_modes(nestlevel);
-
-	if (IS_JOIN_REL(foreignrel))
-	{
-		List	   *ignore_conds = NIL;
-
-		appendStringInfo(buf, " FROM ");
-		sqlite_deparse_from_expr_for_rel(buf, root, foreignrel, true, rtindex,
-										 &ignore_conds, params_list);
-		remote_conds = list_concat(remote_conds, ignore_conds);
-	}
-
-	if (remote_conds)
-	{
-		appendStringInfoString(buf, " WHERE ");
-		sqlite_append_conditions(remote_conds, &context);
-	}
-}
-
-/*
  * deparse remote DELETE statement
  *
  * The statement text is appended to buf, and we also create an integer List
@@ -2414,59 +2638,6 @@ sqlite_deparse_delete(StringInfo buf, PlannerInfo *root,
 		sqlite_deparse_column_ref(buf, rtindex, attnum, root, false, true);
 		appendStringInfo(buf, "=?");
 		i++;
-	}
-}
-
-/*
- * deparse remote DELETE statement
- *
- * 'buf' is the output buffer to append the statement to 'rtindex' is the RT
- * index of the associated target relation 'rel' is the relation descriptor
- * for the target relation 'foreignrel' is the RelOptInfo for the target
- * relation or the join relation containing all base relations in the query
- * 'remote_conds' is the qual clauses that must be evaluated remotely
- * '*params_list' is an output list of exprs that will become remote Params
- * '*retrieved_attrs' is an output list of integers of columns being
- * retrieved by RETURNING (if any)
- */
-void
-sqlite_deparse_direct_delete_sql(StringInfo buf, PlannerInfo *root,
-								 Index rtindex, Relation rel,
-								 RelOptInfo *foreignrel,
-								 List *remote_conds,
-								 List **params_list,
-								 List **retrieved_attrs)
-{
-	deparse_expr_cxt context;
-
-	elog(DEBUG1, "sqlite_fdw : %s", __func__);
-
-	/* Set up context struct for recursion */
-	context.root = root;
-	context.foreignrel = foreignrel;
-	context.scanrel = foreignrel;
-	context.buf = buf;
-	context.params_list = params_list;
-
-	appendStringInfoString(buf, "DELETE FROM ");
-	sqlite_deparse_relation(buf, rel);
-	if (IS_JOIN_REL(foreignrel))
-		appendStringInfo(buf, " %s%d", REL_ALIAS_PREFIX, rtindex);
-
-	if (IS_JOIN_REL(foreignrel))
-	{
-		List	   *ignore_conds = NIL;
-
-		appendStringInfo(buf, " USING ");
-		sqlite_deparse_from_expr_for_rel(buf, root, foreignrel, true, rtindex,
-										 &ignore_conds, params_list);
-		remote_conds = list_concat(remote_conds, ignore_conds);
-	}
-
-	if (remote_conds)
-	{
-		appendStringInfoString(buf, " WHERE ");
-		sqlite_append_conditions(remote_conds, &context);
 	}
 }
 
