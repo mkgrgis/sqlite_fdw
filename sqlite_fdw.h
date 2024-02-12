@@ -272,6 +272,7 @@ typedef struct SqliteFdwDirectModifyState
 
 	Relation	rel;			/* relcache entry for the foreign table */
 	AttInMetadata *attinmeta;	/* attribute datatype conversion metadata */
+	bool        has_Returning;  /* is there a RETURNING clause? */
 
 	/* extracted fdw_private data */
 	char	   *query;			/* text of UPDATE/DELETE command */
