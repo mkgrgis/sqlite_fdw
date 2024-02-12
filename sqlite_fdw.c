@@ -305,7 +305,7 @@ static void sqlite_prepare_wrapper(ForeignServer *server,
 								   bool is_cache);
 static void sqlite_to_pg_type(StringInfo str, char *typname);
 
-static TupleTableSlot **sqlite_execute_insert(EState *estate,
+static TupleTableSlot **sqlite_execute_foreign_modify (EState *estate,
 											  ResultRelInfo *resultRelInfo,
 											  CmdType operation,
 											  TupleTableSlot **slots,
@@ -2158,7 +2158,7 @@ sqliteExecForeignInsert(EState *estate,
 	TupleTableSlot **rslot;
 	int			numSlots = 1;
 
-	rslot = sqlite_execute_insert(estate, resultRelInfo, CMD_INSERT,
+	rslot = sqlite_execute_foreign_modify (estate, resultRelInfo, CMD_INSERT,
 								  &slot, &planSlot, &numSlots);
 
 	return rslot ? *rslot : NULL;
@@ -2178,7 +2178,7 @@ sqliteExecForeignBatchInsert(EState *estate,
 {
 	TupleTableSlot **rslot;
 
-	rslot = sqlite_execute_insert(estate, resultRelInfo, CMD_INSERT,
+	rslot = sqlite_execute_foreign_modify (estate, resultRelInfo, CMD_INSERT,
 								  slots, planSlots, numSlots);
 
 	return rslot;
@@ -2923,53 +2923,14 @@ sqliteExecForeignUpdate(EState *estate,
 						TupleTableSlot *slot,
 						TupleTableSlot *planSlot)
 {
-	SqliteFdwExecState *fmstate = (SqliteFdwExecState *) resultRelInfo->ri_FdwState;
-	Relation	rel = resultRelInfo->ri_RelationDesc;
-	Oid			foreignTableId = RelationGetRelid(rel);
-	ListCell   *lc = NULL;
-	int			bindnum = 0;
-	int			i = 0;
-	int			rc = 0;
-
-	elog(DEBUG1, "sqlite_fdw : %s", __func__);
-
-	/* Bind the values */
-	foreach(lc, fmstate->retrieved_attrs)
-	{
-		int			attnum = lfirst_int(lc);
-		bool		is_null;
-		Datum		value = 0;
-		Form_pg_attribute bind_att = NULL;
-#if PG_VERSION_NUM >= 140000
-		TupleDesc	tupdesc = RelationGetDescr(fmstate->rel);
-		Form_pg_attribute attr = TupleDescAttr(tupdesc, attnum - 1);
-
-		/* Ignore generated columns and skip bind value */
-		if (attr->attgenerated)
-			continue;
-#endif
-		/* first attribute cannot be in target list attribute */
-		bind_att = TupleDescAttr(slot->tts_tupleDescriptor, attnum - 1);
-		value = slot_getattr(slot, attnum, &is_null);
-
-		sqlite_bind_sql_var(bind_att, bindnum, value, fmstate->stmt, &is_null, foreignTableId);
-		bindnum++;
-		i++;
-	}
-
-	bindJunkColumnValue(fmstate, slot, planSlot, foreignTableId, bindnum);
-
-	/* Execute the query */
-	rc = sqlite3_step(fmstate->stmt);
-	if (rc != SQLITE_DONE)
-	{
-		sqlitefdw_report_error(ERROR, fmstate->stmt, fmstate->conn, NULL, rc);
-	}
-
-	sqlite3_reset(fmstate->stmt);
-
-	/* Return NULL if nothing was updated on the remote end */
-	return slot;
+	TupleTableSlot **rslot;
+	int		 numSlots = 1;
+  
+	elog(DEBUG1, "sqlite_fdw : %s", __func__);  
+	rslot = execute_foreign_modify(estate, resultRelInfo, CMD_UPDATE,
+								   &slot, &planSlot, &numSlots);
+  
+	return rslot ? rslot[0] : NULL;
 }
 
 static TupleTableSlot *
@@ -2978,24 +2939,14 @@ sqliteExecForeignDelete(EState *estate,
 						TupleTableSlot *slot,
 						TupleTableSlot *planSlot)
 {
-	SqliteFdwExecState *fmstate = (SqliteFdwExecState *) resultRelInfo->ri_FdwState;
-	Relation	rel = resultRelInfo->ri_RelationDesc;
-	Oid			foreignTableId = RelationGetRelid(rel);
-	int			rc = 0;
+	TupleTableSlot **rslot;
+	int		 numSlots = 1;
 
-	elog(DEBUG1, "sqlite_fdw : %s", __func__);
-
-	bindJunkColumnValue(fmstate, slot, planSlot, foreignTableId, 0);
-
-	/* Execute the query */
-	rc = sqlite3_step(fmstate->stmt);
-	if (rc != SQLITE_DONE)
-	{
-		sqlitefdw_report_error(ERROR, fmstate->stmt, fmstate->conn, NULL, rc);
-	}
-	sqlite3_reset(fmstate->stmt);
-	/* Return NULL if nothing was updated on the remote end */
-	return slot;
+	elog(DEBUG1, "sqlite_fdw : %s", __func__);  
+	rslot = sqlite_execute_foreign_modify(estate, resultRelInfo, CMD_DELETE,
+										  &slot, &planSlot, &numSlots);
+  
+	return rslot ? rslot[0] : NULL;
 }
 
 static void
@@ -5240,11 +5191,14 @@ sqlite_reset_transmission_modes(int nestlevel)
 }
 
 /*
- * sqlite_execute_insert
- *		Perform execute sqliteExecForeignInsert, sqliteExecForeignBatchInsert
+ * sqlite_execute_foreign_modify 
+ *	  Perform foreign-table modification as required, and fetch RETURNING
+ *	  result if any.  (This is the shared guts of sqliteExecForeignInsert,
+ *	  sqliteExecForeignBatchInsert, sqliteExecForeignUpdate, and
+ *	  sqliteExecForeignDelete.)
  */
 static TupleTableSlot **
-sqlite_execute_insert(EState *estate,
+sqlite_execute_foreign_modify (EState *estate,
 					  ResultRelInfo *resultRelInfo,
 					  CmdType operation,
 					  TupleTableSlot **slots,
@@ -5252,31 +5206,38 @@ sqlite_execute_insert(EState *estate,
 					  int *numSlots)
 {
 	SqliteFdwExecState *fmstate = (SqliteFdwExecState *) resultRelInfo->ri_FdwState;
-	ListCell   *lc;
+	ListCell   *lc = NULL;
 	Datum		value = 0;
 	MemoryContext oldcontext;
 	int			rc = SQLITE_OK;
 	int			nestlevel;
 	int			bindnum = 0;
-	int			i;
+	int			i = 0;
 
-#if PG_VERSION_NUM >= 140000
+//#if PG_VERSION_NUM >= 140000
 	Relation	rel = resultRelInfo->ri_RelationDesc;
 	TupleDesc	tupdesc = RelationGetDescr(rel);
 	Oid			foreignTableId = RelationGetRelid(rel);
 	elog(DEBUG1, "sqlite_fdw : %s for RelId %u", __func__, foreignTableId);
-#else
-	elog(DEBUG1, "sqlite_fdw : %s", __func__);
-#endif
+//#else
+	//elog(DEBUG1, "sqlite_fdw : %s", __func__);
+//#endif
+
+	/* The operation should be INSERT, UPDATE, or DELETE */
+	Assert(operation == CMD_INSERT ||
+		   operation == CMD_UPDATE ||
+		   operation == CMD_DELETE);
+
 
 	oldcontext = MemoryContextSwitchTo(fmstate->temp_cxt);
-
 	nestlevel = sqlite_set_transmission_modes();
 
-	Assert(operation == CMD_INSERT);
-
 #if PG_VERSION_NUM >= 140000
-	if (fmstate->num_slots != *numSlots)
+	 /*
+	  * If the existing query was deparsed and prepared for a different number
+	  * of rows, rebuild it for the proper number.
+	  */
+	if (operation == CMD_INSERT && fmstate->num_slots != *numSlots)
 	{
 		StringInfoData sql;
 
@@ -5295,6 +5256,8 @@ sqlite_execute_insert(EState *estate,
 	}
 #endif
 
+	if (operation == CMD_INSERT)
+	{
 	for (i = 0; i < *numSlots; i++)
 	{
 		foreach(lc, fmstate->retrieved_attrs)
@@ -5332,6 +5295,66 @@ sqlite_execute_insert(EState *estate,
 	MemoryContextReset(fmstate->temp_cxt);
 
 	return slots;
+	}
+	
+	if (operation == CMD_DELETE)
+	{
+		int			rc = 0;
+
+		bindJunkColumnValue(fmstate, slot, planSlot, foreignTableId, 0);
+
+		/* Execute the query */
+		rc = sqlite3_step(fmstate->stmt);
+		if (rc != SQLITE_DONE)
+		{
+			sqlitefdw_report_error(ERROR, fmstate->stmt, fmstate->conn, NULL, rc);
+		}
+		sqlite3_reset(fmstate->stmt);
+		/* Return NULL if nothing was updated on the remote end */
+		return slot;
+	}
+
+	if (operation == CMD_UPDATE)
+	{
+	
+	/* Bind the values */
+	foreach(lc, fmstate->retrieved_attrs)
+	{
+		int			attnum = lfirst_int(lc);
+		bool		is_null;
+		Datum		value = 0;
+		Form_pg_attribute bind_att = NULL;
+#if PG_VERSION_NUM >= 140000
+		TupleDesc	tupdesc = RelationGetDescr(fmstate->rel);
+		Form_pg_attribute attr = TupleDescAttr(tupdesc, attnum - 1);
+
+		/* Ignore generated columns and skip bind value */
+		if (attr->attgenerated)
+			continue;
+#endif
+		/* first attribute cannot be in target list attribute */
+		bind_att = TupleDescAttr(slot->tts_tupleDescriptor, attnum - 1);
+		value = slot_getattr(slot, attnum, &is_null);
+
+		sqlite_bind_sql_var(bind_att, bindnum, value, fmstate->stmt, &is_null, foreignTableId);
+		bindnum++;
+		i++;
+	}
+
+	bindJunkColumnValue(fmstate, slot, planSlot, foreignTableId, bindnum);
+
+	/* Execute the query */
+	rc = sqlite3_step(fmstate->stmt);
+	if (rc != SQLITE_DONE)
+	{
+		sqlitefdw_report_error(ERROR, fmstate->stmt, fmstate->conn, NULL, rc);
+	}
+
+	sqlite3_reset(fmstate->stmt);
+
+	/* Return NULL if nothing was updated on the remote end */
+	return slot;
+	}
 }
 
 /*
@@ -5896,7 +5919,7 @@ conversion_error_callback(void *arg)
 			value_text = palloc (max_logged_byte_length * 2 + 1);
 			for (size_t i = 0; i < value_byte_size_blob_or_utf8; ++i)
 				sprintf(value_text + i * 2, "%02x", vt[i]);
-	    }
+		}
 
 		err_hint_mess = err_hint_mess0;
 		err_hint_mess += sprintf(
