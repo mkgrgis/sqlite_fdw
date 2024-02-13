@@ -5288,7 +5288,6 @@ sqlite_execute_foreign_modify (EState *estate,
 	MemoryContext oldcontext;
 	int			rc = SQLITE_OK;
 	int			nestlevel;
-	int			i = 0;
 	Relation	rel = resultRelInfo->ri_RelationDesc;
 	Oid			foreignTableId = RelationGetRelid(rel);
 
@@ -5328,6 +5327,7 @@ sqlite_execute_foreign_modify (EState *estate,
 
 	if (operation == CMD_INSERT)
 	{
+		int	i = 0;
     	for (i = 0; i < *numSlots; i++)
     	{
         	sqlite_foreign_modify_bind (fmstate, slots[0], rel);
