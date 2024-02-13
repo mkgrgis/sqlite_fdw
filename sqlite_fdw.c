@@ -5224,6 +5224,52 @@ sqlite_reset_transmission_modes(int nestlevel)
 }
 
 /*
+ * sqlite_foreign_modify_bind used for variables in insert and update
+ */
+static int sqlite_foreign_modify_bind (SqliteFdwExecState *fmstate, TupleTableSlot *slot, Relation	rel)
+{
+	ListCell   *lc = NULL;
+	Datum		value = 0;
+	int			bindnum = 0;
+	Oid			foreignTableId = RelationGetRelid(rel);	
+   	/* Bind the values */
+   	foreach(lc, fmstate->retrieved_attrs)
+    {
+   		int			attnum = lfirst_int(lc);
+   		Form_pg_attribute att = TupleDescAttr(slot->tts_tupleDescriptor, attnum - 1);
+   		bool		is_null;
+#if PG_VERSION_NUM >= 140000
+    	/* Ignore generated columns and skip bind value */
+    	if (att->attgenerated)
+    		continue;
+#endif
+    	/* first attribute cannot be in target list attribute */
+    	value = slot_getattr(slot, attnum, &is_null);
+    	sqlite_bind_sql_var(att, bindnum, value, fmstate->stmt, &is_null, foreignTableId);
+    	bindnum++;
+    }
+    return bindnum;
+}
+/*
+    		foreach(lc, fmstate->retrieved_attrs)
+	    	{
+	    		int			attnum = lfirst_int(lc) - 1;
+	    		Form_pg_attribute att = TupleDescAttr(slots[i]->tts_tupleDescriptor, attnum);
+	    		bool		isnull;
+#if PG_VERSION_NUM >= 140000
+	    		Form_pg_attribute attr = TupleDescAttr(tupdesc, attnum);
+	    		/ * Ignore generated columns and skip bind value 
+	    		if (attr->attgenerated)
+	    			continue;
+#else
+
+#endif
+	    		value = slot_getattr(slots[i], attnum + 1, &isnull);
+	    		sqlite_bind_sql_var(att, bindnum, value, fmstate->stmt, &isnull, foreignTableId);
+	    		bindnum++;
+	    		*/
+
+/*
  * sqlite_execute_foreign_modify 
  *	  Perform foreign-table modification as required, and fetch RETURNING
  *	  result if any.  (This is the shared guts of sqliteExecForeignInsert,
@@ -5239,17 +5285,11 @@ sqlite_execute_foreign_modify (EState *estate,
 					  int *numSlots)
 {
 	SqliteFdwExecState *fmstate = (SqliteFdwExecState *) resultRelInfo->ri_FdwState;
-	ListCell   *lc = NULL;
-	Datum		value = 0;
 	MemoryContext oldcontext;
 	int			rc = SQLITE_OK;
 	int			nestlevel;
-	int			bindnum = 0;
 	int			i = 0;
 	Relation	rel = resultRelInfo->ri_RelationDesc;
-#if PG_VERSION_NUM >= 140000
-	TupleDesc	tupdesc = RelationGetDescr(rel);
-#endif
 	Oid			foreignTableId = RelationGetRelid(rel);
 
 	elog(DEBUG1, "sqlite_fdw : %s RelOid=%u", __func__, foreignTableId);
@@ -5290,23 +5330,7 @@ sqlite_execute_foreign_modify (EState *estate,
 	{
     	for (i = 0; i < *numSlots; i++)
     	{
-    		foreach(lc, fmstate->retrieved_attrs)
-	    	{
-	    		int			attnum = lfirst_int(lc) - 1;
-	    		Form_pg_attribute att = TupleDescAttr(slots[i]->tts_tupleDescriptor, attnum);
-	    		bool		isnull;
-#if PG_VERSION_NUM >= 140000
-	    		Form_pg_attribute attr = TupleDescAttr(tupdesc, attnum);
-	    		/* Ignore generated columns and skip bind value */
-	    		if (attr->attgenerated)
-	    			continue;
-#else
-
-#endif
-	    		value = slot_getattr(slots[i], attnum + 1, &isnull);
-	    		sqlite_bind_sql_var(att, bindnum, value, fmstate->stmt, &isnull, foreignTableId);
-	    		bindnum++;
-	    	}
+        	sqlite_foreign_modify_bind (fmstate, slots[0], rel);
     	}
 	    sqlite_reset_transmission_modes(nestlevel);
 	}
@@ -5318,26 +5342,7 @@ sqlite_execute_foreign_modify (EState *estate,
 
 	if (operation == CMD_UPDATE)
 	{
-    	/* Bind the values */
-    	foreach(lc, fmstate->retrieved_attrs)
-	    {
-    		int			attnum = lfirst_int(lc);
-    		bool		is_null;
-    		Form_pg_attribute bind_att = NULL;
-#if PG_VERSION_NUM >= 140000
-	    	Form_pg_attribute attr = TupleDescAttr(tupdesc, attnum - 1);
-	    	/* Ignore generated columns and skip bind value */
-	    	if (attr->attgenerated)
-	    		continue;
-#endif
-	    	/* first attribute cannot be in target list attribute */
-	    	bind_att = TupleDescAttr(slots[0]->tts_tupleDescriptor, attnum - 1);
-	    	value = slot_getattr(slots[0], attnum, &is_null);
-
-	    	sqlite_bind_sql_var(bind_att, bindnum, value, fmstate->stmt, &is_null, foreignTableId);
-	    	bindnum++;
-	    	i++;
-	    }
+        int bindnum = sqlite_foreign_modify_bind (fmstate, slots[0], rel);
     	bindJunkColumnValue(fmstate, slots[0], planSlots[0], foreignTableId, bindnum);
 	}
 	
