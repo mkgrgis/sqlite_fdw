@@ -1703,13 +1703,13 @@ sqlite_deparseReturningList(StringInfo buf, PlannerInfo *root,
 		pull_varattnos((Node *) withCheckOptionList, rtindex,
 					   &attrs_used);
 	}
-/*
+
 	if (returningList != NIL)
 	{
 		/*
 		 * We need the attrs, non-system and system, mentioned in the local
 		 * query's RETURNING list.
-		 * /
+		 */
 		pull_varattnos((Node *) returningList, rtindex,
 					   &attrs_used);
 	}
@@ -1720,7 +1720,6 @@ sqlite_deparseReturningList(StringInfo buf, PlannerInfo *root,
 	}
 	else
 		*retrieved_attrs = NIL;
-*/		
 }
 
 /*
@@ -1950,6 +1949,8 @@ sqlite_deparseTargetList(StringInfo buf,
 				else
 					appendStringInfoString(buf, ", ");
 			}
+			else if (is_returning)
+				appendStringInfoString(buf, " RETURNING ");
 			else if (is_concat)
 				appendStringInfoString(buf, "COALESCE(");
 			else if (check_null)
@@ -2371,7 +2372,7 @@ sqlite_deparseUpdateSql(StringInfo buf, PlannerInfo *root,
 		appendStringInfo(buf, "=?");
 		i++;
 	}
-	
+
 	sqlite_deparseReturningList(buf, root, rtindex, rel,
 								rel->trigdesc && rel->trigdesc->trig_insert_after_row,
 								withCheckOptionList, returningList, retrieved_attrs);
@@ -2498,7 +2499,7 @@ sqlite_deparseDeleteSql(StringInfo buf, PlannerInfo *root,
 		appendStringInfo(buf, "=?");
 		i++;
 	}
-	
+
     sqlite_deparseReturningList(buf, root, rtindex, rel,
 								rel->trigdesc && rel->trigdesc->trig_delete_after_row,
 								NIL, returningList, retrieved_attrs);

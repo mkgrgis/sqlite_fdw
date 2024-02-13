@@ -2020,7 +2020,7 @@ sqlitePlanForeignModify(PlannerInfo *root,
 	 *		(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
 	 *			 errmsg("RETURNING clause is not supported")));
 	 */
-	
+
 	/*
 	 * Construct the SQL command string.
 	 */
@@ -2958,11 +2958,11 @@ sqliteExecForeignUpdate(EState *estate,
 {
 	TupleTableSlot **rslot;
 	int		 numSlots = 1;
-  
-	elog(DEBUG1, "sqlite_fdw : %s", __func__);  
+
+	elog(DEBUG1, "sqlite_fdw : %s", __func__);
 	rslot = sqlite_execute_foreign_modify(estate, resultRelInfo, CMD_UPDATE,
 								   &slot, &planSlot, &numSlots);
-  
+
 	return rslot ? rslot[0] : NULL;
 }
 
@@ -2975,10 +2975,10 @@ sqliteExecForeignDelete(EState *estate,
 	TupleTableSlot **rslot;
 	int		 numSlots = 1;
 
-	elog(DEBUG1, "sqlite_fdw : %s", __func__);  
+	elog(DEBUG1, "sqlite_fdw : %s", __func__);
 	rslot = sqlite_execute_foreign_modify(estate, resultRelInfo, CMD_DELETE,
 										  &slot, &planSlot, &numSlots);
-  
+
 	return rslot ? rslot[0] : NULL;
 }
 
@@ -5231,7 +5231,7 @@ static int sqlite_foreign_modify_bind (SqliteFdwExecState *fmstate, TupleTableSl
 	ListCell   *lc = NULL;
 	Datum		value = 0;
 	int			bindnum = 0;
-	Oid			foreignTableId = RelationGetRelid(rel);	
+	Oid			foreignTableId = RelationGetRelid(rel);
    	/* Bind the values */
    	foreach(lc, fmstate->retrieved_attrs)
     {
@@ -5252,7 +5252,7 @@ static int sqlite_foreign_modify_bind (SqliteFdwExecState *fmstate, TupleTableSl
 }
 
 /*
- * sqlite_execute_foreign_modify 
+ * sqlite_execute_foreign_modify
  *	  Perform foreign-table modification as required, and fetch RETURNING
  *	  result if any.  (This is the shared guts of sqliteExecForeignInsert,
  *	  sqliteExecForeignBatchInsert, sqliteExecForeignUpdate, and
@@ -5316,7 +5316,7 @@ sqlite_execute_foreign_modify (EState *estate,
     	}
 	    sqlite_reset_transmission_modes(nestlevel);
 	}
-	
+
 	if (operation == CMD_DELETE)
 	{
 		bindJunkColumnValue(fmstate, slots[0], planSlots[0], foreignTableId, 0);
@@ -5327,7 +5327,7 @@ sqlite_execute_foreign_modify (EState *estate,
         int bindnum = sqlite_foreign_modify_bind (fmstate, slots[0], rel);
     	bindJunkColumnValue(fmstate, slots[0], planSlots[0], foreignTableId, bindnum);
 	}
-	
+
 	/* Execute the query */
     rc = sqlite3_step(fmstate->stmt);
 	if (SQLITE_ROW == rc) // ????
@@ -5359,13 +5359,13 @@ sqlite_execute_foreign_modify (EState *estate,
          if (n_rows > 0)
              store_returning_result(fmstate, slots[0], res);
      }*/
-     
+
 	sqlite3_reset(fmstate->stmt);
     if (operation == CMD_INSERT)
     {
     	MemoryContextSwitchTo(oldcontext);
 	    MemoryContextReset(fmstate->temp_cxt);
-	}		
+	}
 	/* Return NULL if nothing was updated on the remote end */
 	return slots;
 }
