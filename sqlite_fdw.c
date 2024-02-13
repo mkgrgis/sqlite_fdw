@@ -1891,7 +1891,7 @@ sqlitePlanForeignModify(PlannerInfo *root,
 	CmdType			operation = plan->operation;
 	RangeTblEntry  *rte = planner_rt_fetch(resultRelation, root);
 	Relation		rel;
-    List		   *targetAttrs = NULL;
+	List		   *targetAttrs = NULL;
 	List		   *withCheckOptionList = NIL;
 	List		   *returningList = NIL;
 	List		   *retrieved_attrs = NIL;
@@ -2002,7 +2002,7 @@ sqlitePlanForeignModify(PlannerInfo *root,
 		}
 	}
 
-    /*
+	/*
 	 * Extract the relevant WITH CHECK OPTION list if any.
 	 */
 	if (plan->withCheckOptionLists)
@@ -5234,21 +5234,21 @@ static int sqlite_foreign_modify_bind (SqliteFdwExecState *fmstate, TupleTableSl
 	Oid			foreignTableId = RelationGetRelid(rel);
    	/* Bind the values */
    	foreach(lc, fmstate->retrieved_attrs)
-    {
+	{
    		int			attnum = lfirst_int(lc);
    		Form_pg_attribute att = TupleDescAttr(slot->tts_tupleDescriptor, attnum - 1);
    		bool		is_null;
 #if PG_VERSION_NUM >= 140000
-    	/* Ignore generated columns and skip bind value */
-    	if (att->attgenerated)
-    		continue;
+		/* Ignore generated columns and skip bind value */
+		if (att->attgenerated)
+			continue;
 #endif
-    	/* first attribute cannot be in target list attribute */
-    	value = slot_getattr(slot, attnum, &is_null);
-    	sqlite_bind_sql_var(att, bindnum, value, fmstate->stmt, &is_null, foreignTableId);
-    	bindnum++;
-    }
-    return bindnum;
+		/* first attribute cannot be in target list attribute */
+		value = slot_getattr(slot, attnum, &is_null);
+		sqlite_bind_sql_var(att, bindnum, value, fmstate->stmt, &is_null, foreignTableId);
+		bindnum++;
+	}
+	return bindnum;
 }
 
 /*
@@ -5280,10 +5280,10 @@ sqlite_execute_foreign_modify (EState *estate,
 		   operation == CMD_UPDATE ||
 		   operation == CMD_DELETE);
 
-    if (operation == CMD_INSERT)
-    {
-    	oldcontext = MemoryContextSwitchTo(fmstate->temp_cxt);
-    	nestlevel = sqlite_set_transmission_modes();
+	if (operation == CMD_INSERT)
+	{
+		oldcontext = MemoryContextSwitchTo(fmstate->temp_cxt);
+		nestlevel = sqlite_set_transmission_modes();
 	}
 
 #if PG_VERSION_NUM >= 140000
@@ -5310,11 +5310,11 @@ sqlite_execute_foreign_modify (EState *estate,
 	if (operation == CMD_INSERT)
 	{
 		int	i = 0;
-    	for (i = 0; i < *numSlots; i++)
-    	{
-        	sqlite_foreign_modify_bind (fmstate, slots[0], rel);
-    	}
-	    sqlite_reset_transmission_modes(nestlevel);
+		for (i = 0; i < *numSlots; i++)
+		{
+			sqlite_foreign_modify_bind (fmstate, slots[0], rel);
+		}
+		sqlite_reset_transmission_modes(nestlevel);
 	}
 
 	if (operation == CMD_DELETE)
@@ -5324,12 +5324,12 @@ sqlite_execute_foreign_modify (EState *estate,
 
 	if (operation == CMD_UPDATE)
 	{
-        int bindnum = sqlite_foreign_modify_bind (fmstate, slots[0], rel);
-    	bindJunkColumnValue(fmstate, slots[0], planSlots[0], foreignTableId, bindnum);
+		int bindnum = sqlite_foreign_modify_bind (fmstate, slots[0], rel);
+		bindJunkColumnValue(fmstate, slots[0], planSlots[0], foreignTableId, bindnum);
 	}
 
 	/* Execute the query */
-    rc = sqlite3_step(fmstate->stmt);
+	rc = sqlite3_step(fmstate->stmt);
 	if (SQLITE_ROW == rc) // ????
 	{
 		elog(DEBUG1, "sqlite_fdw : %s row", __func__);
@@ -5352,19 +5352,19 @@ sqlite_execute_foreign_modify (EState *estate,
 	}
 
 	/* Check number of rows affected, and fetch RETURNING tuple if any * /
-     if (fmstate->has_returning)
-     {
-         Assert(*numSlots == 1);
-         n_rows = PQntuples(res);
-         if (n_rows > 0)
-             store_returning_result(fmstate, slots[0], res);
-     }*/
+	 if (fmstate->has_returning)
+	 {
+		 Assert(*numSlots == 1);
+		 n_rows = PQntuples(res);
+		 if (n_rows > 0)
+			 store_returning_result(fmstate, slots[0], res);
+	 }*/
 
 	sqlite3_reset(fmstate->stmt);
-    if (operation == CMD_INSERT)
-    {
-    	MemoryContextSwitchTo(oldcontext);
-	    MemoryContextReset(fmstate->temp_cxt);
+	if (operation == CMD_INSERT)
+	{
+		MemoryContextSwitchTo(oldcontext);
+		MemoryContextReset(fmstate->temp_cxt);
 	}
 	/* Return NULL if nothing was updated on the remote end */
 	return slots;

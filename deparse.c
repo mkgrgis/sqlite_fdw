@@ -125,15 +125,15 @@ static void sqlite_print_remote_placeholder(Oid paramtype, int32 paramtypmod,
 											deparse_expr_cxt *context);
 static void sqlite_deparse_relation(StringInfo buf, Relation rel);
 static void sqlite_deparseTargetList(StringInfo buf,
-			            			 PlannerInfo *root,
-      		            			 Index rtindex,
-       		            			 Relation rel,
-       		            			 bool is_returning,
-      		            			 Bitmapset *attrs_used,
-       		            			 bool qualify_col,
-       		            			 List **retrieved_attrs,
-       		            			 bool is_concat,
-       		            			 bool check_null);
+									 PlannerInfo *root,
+	  								 Index rtindex,
+	   								 Relation rel,
+	   								 bool is_returning,
+	  								 Bitmapset *attrs_used,
+	   								 bool qualify_col,
+	   								 List **retrieved_attrs,
+	   								 bool is_concat,
+	   								 bool check_null);
 static void sqlite_deparse_column_ref(StringInfo buf, int varno, int varattno, PlannerInfo *root, bool qualify_col, bool dml_context);
 static void sqlite_deparse_select(List *tlist, List **retrieved_attrs, deparse_expr_cxt *context);
 static void sqlite_deparse_case_expr(CaseExpr *node, deparse_expr_cxt *context);
@@ -1673,11 +1673,11 @@ sqlite_deparse_range_tbl_ref(StringInfo buf, PlannerInfo *root, RelOptInfo *fore
  */
 static void
 sqlite_deparseReturningList(StringInfo buf, PlannerInfo *root,
-        		        	Index rtindex, Relation rel,
-	        				bool trig_after_row,
-	        				List *withCheckOptionList,
-	        				List *returningList,
-	        				List **retrieved_attrs)
+							Index rtindex, Relation rel,
+							bool trig_after_row,
+							List *withCheckOptionList,
+							List *returningList,
+							List **retrieved_attrs)
 {
 	Bitmapset  *attrs_used = NULL;
 
@@ -1731,10 +1731,10 @@ sqlite_deparseReturningList(StringInfo buf, PlannerInfo *root,
  */
 void
 sqlite_deparseInsertSql(StringInfo buf, PlannerInfo *root,
-					    Index rtindex, Relation rel,
-					    List *targetAttrs, bool doNothing,
-					    List *withCheckOptionList, List *returningList,
-					    List **retrieved_attrs, int *values_end_len)
+						Index rtindex, Relation rel,
+						List *targetAttrs, bool doNothing,
+						List *withCheckOptionList, List *returningList,
+						List **retrieved_attrs, int *values_end_len)
 {
 #if PG_VERSION_NUM >= 140000
 	TupleDesc	tupdesc = RelationGetDescr(rel);
@@ -1744,7 +1744,7 @@ sqlite_deparseInsertSql(StringInfo buf, PlannerInfo *root,
 	bool		first;
 	ListCell   *lc;
 
-    elog(DEBUG3, "sqlite_fdw : %s", __func__);
+	elog(DEBUG3, "sqlite_fdw : %s", __func__);
 	appendStringInfo(buf, "INSERT %sINTO ", doNothing ? "OR IGNORE " : "");
 	sqlite_deparse_relation(buf, rel);
 
@@ -1827,7 +1827,7 @@ sqlite_deparseInsertSql(StringInfo buf, PlannerInfo *root,
 	else
 		appendStringInfoString(buf, " DEFAULT VALUES");
 
-    if (doNothing)
+	if (doNothing)
 		appendStringInfoString(buf, " ON CONFLICT DO NOTHING");
 
 	sqlite_deparseReturningList(buf, root, rtindex, rel,
@@ -1908,14 +1908,14 @@ sqlite_deparse_analyze(StringInfo sql, char *dbname, char *relname)
 static void
 sqlite_deparseTargetList(StringInfo buf,
 						 PlannerInfo *root,
-      					 Index rtindex,
-       					 Relation rel,
-       					 bool is_returning,
-      					 Bitmapset *attrs_used,
-       					 bool qualify_col,
-       					 List **retrieved_attrs,
-       					 bool is_concat,
-       					 bool check_null)
+	  					 Index rtindex,
+	   					 Relation rel,
+	   					 bool is_returning,
+	  					 Bitmapset *attrs_used,
+	   					 bool qualify_col,
+	   					 List **retrieved_attrs,
+	   					 bool is_concat,
+	   					 bool check_null)
 {
 	TupleDesc	tupdesc = RelationGetDescr(rel);
 	bool		have_wholerow;
@@ -2500,7 +2500,7 @@ sqlite_deparseDeleteSql(StringInfo buf, PlannerInfo *root,
 		i++;
 	}
 
-    sqlite_deparseReturningList(buf, root, rtindex, rel,
+	sqlite_deparseReturningList(buf, root, rtindex, rel,
 								rel->trigdesc && rel->trigdesc->trig_delete_after_row,
 								NIL, returningList, retrieved_attrs);
 }
