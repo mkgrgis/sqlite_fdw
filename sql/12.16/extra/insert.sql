@@ -626,8 +626,6 @@ insert into returningwrtest values (2, 'foo') returning returningwrtest;
 drop table returningwrtest;
 */
 
-insert into inserttest01 values (DEFAULT, 5, 'test') RETURNING *;
-
 -- drop all foreign tables
 DO $d$
 declare

@@ -1891,14 +1891,17 @@ sqlitePlanForeignModify(PlannerInfo *root,
 	CmdType			operation = plan->operation;
 	RangeTblEntry  *rte = planner_rt_fetch(resultRelation, root);
 	Relation		rel;
-	List		   *targetAttrs = NULL;
+    List		   *targetAttrs = NULL;
+	List		   *withCheckOptionList = NIL;
+	List		   *returningList = NIL;
+	List		   *retrieved_attrs = NIL;
+	bool			doNothing = false;
+	int				values_end_len = -1;
 	StringInfoData  sql;
 	Oid				foreignTableId;
 	TupleDesc		tupdesc;
 	int				i;
-	List		   *condAttr = NULL;
-	bool			doNothing = false;
-	int				values_end_len = -1;
+	List		   *conditionAttr = NULL;
 
 	elog(DEBUG1, "sqlite_fdw : %s", __func__);
 
@@ -1976,8 +1979,8 @@ sqlitePlanForeignModify(PlannerInfo *root,
 			 (int) plan->onConflictAction);
 
 	/*
-	 * Add all primary key attribute names to condAttr used in where clause of
-	 * update
+	 * Add all primary key attribute names to conditionAttr used in where clause of
+	 * update and delete
 	 */
 	for (i = 0; i < tupdesc->natts; ++i)
 	{
@@ -1994,29 +1997,59 @@ sqlitePlanForeignModify(PlannerInfo *root,
 
 			if (IS_KEY_COLUMN(def))
 			{
-				condAttr = lappend_int(condAttr, attrno);
+				conditionAttr = lappend_int(conditionAttr, attrno);
 			}
 		}
 	}
 
+    /*
+	 * Extract the relevant WITH CHECK OPTION list if any.
+	 */
+	if (plan->withCheckOptionLists)
+		withCheckOptionList = (List *) list_nth(plan->withCheckOptionLists,
+												subplan_index);
+
+	/*
+	 * Extract the relevant RETURNING list if any.
+	 */
+	if (plan->returningLists)
+		returningList = (List *) list_nth(plan->returningLists, subplan_index);
+
+	/*if (plan->returningLists)
+	 *	ereport(ERROR,
+	 *		(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+	 *			 errmsg("RETURNING clause is not supported")));
+	 */
+	
 	/*
 	 * Construct the SQL command string.
 	 */
 	switch (operation)
 	{
 		case CMD_INSERT:
-			sqlite_deparse_insert(&sql, root, resultRelation, rel, targetAttrs, doNothing, &values_end_len);
+			sqlite_deparseInsertSql(&sql, root, resultRelation, rel,
+							 targetAttrs, doNothing,
+							 withCheckOptionList, returningList,
+							 &retrieved_attrs, &values_end_len);
 			break;
 		case CMD_UPDATE:
-			sqlite_deparse_update(&sql, root, resultRelation, rel, targetAttrs, condAttr);
+			sqlite_deparseUpdateSql(&sql, root, resultRelation, rel,
+							 targetAttrs,
+							 withCheckOptionList, returningList,
+							 &retrieved_attrs,
+							 conditionAttr);
 			break;
 		case CMD_DELETE:
-			sqlite_deparse_delete(&sql, root, resultRelation, rel, condAttr);
+			sqlite_deparseDeleteSql(&sql, root, resultRelation, rel,
+							 returningList,
+							 &retrieved_attrs,
+							 conditionAttr);
 			break;
 		default:
 			elog(ERROR, "unexpected operation: %d", (int) operation);
 			break;
 	}
+
 	table_close(rel, NoLock);
 	return list_make3(makeString(sql.data), targetAttrs, makeInteger(values_end_len));
 }
@@ -5214,7 +5247,9 @@ sqlite_execute_foreign_modify (EState *estate,
 	int			bindnum = 0;
 	int			i = 0;
 	Relation	rel = resultRelInfo->ri_RelationDesc;
+#if PG_VERSION_NUM >= 140000
 	TupleDesc	tupdesc = RelationGetDescr(rel);
+#endif
 	Oid			foreignTableId = RelationGetRelid(rel);
 
 	elog(DEBUG1, "sqlite_fdw : %s RelOid=%u", __func__, foreignTableId);
@@ -5238,13 +5273,10 @@ sqlite_execute_foreign_modify (EState *estate,
 	if (operation == CMD_INSERT && fmstate->num_slots != *numSlots)
 	{
 		StringInfoData sql;
-
-		fmstate->table = GetForeignTable(RelationGetRelid(fmstate->rel));
-		fmstate->server = GetForeignServer(fmstate->table->serverid);
 		fmstate->stmt = NULL;
 
 		initStringInfo(&sql);
-		sqlite_rebuild_insert(&sql, fmstate->rel, fmstate->orig_query,
+		sqlite_rebuild_insert(&sql, rel, fmstate->orig_query,
 							  fmstate->target_attrs, fmstate->values_end,
 							  fmstate->p_nums, *numSlots - 1);
 		fmstate->query = sql.data;
@@ -5263,8 +5295,8 @@ sqlite_execute_foreign_modify (EState *estate,
 	    		int			attnum = lfirst_int(lc) - 1;
 	    		Form_pg_attribute att = TupleDescAttr(slots[i]->tts_tupleDescriptor, attnum);
 	    		bool		isnull;
-	    		Form_pg_attribute attr = TupleDescAttr(tupdesc, attnum);
 #if PG_VERSION_NUM >= 140000
+	    		Form_pg_attribute attr = TupleDescAttr(tupdesc, attnum);
 	    		/* Ignore generated columns and skip bind value */
 	    		if (attr->attgenerated)
 	    			continue;
@@ -5292,9 +5324,8 @@ sqlite_execute_foreign_modify (EState *estate,
     		int			attnum = lfirst_int(lc);
     		bool		is_null;
     		Form_pg_attribute bind_att = NULL;
-    		tupdesc = RelationGetDescr(fmstate->rel);
-	    	Form_pg_attribute attr = TupleDescAttr(tupdesc, attnum - 1);
 #if PG_VERSION_NUM >= 140000
+	    	Form_pg_attribute attr = TupleDescAttr(tupdesc, attnum - 1);
 	    	/* Ignore generated columns and skip bind value */
 	    	if (attr->attgenerated)
 	    		continue;
