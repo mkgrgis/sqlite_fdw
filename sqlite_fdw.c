@@ -5250,24 +5250,6 @@ static int sqlite_foreign_modify_bind (SqliteFdwExecState *fmstate, TupleTableSl
     }
     return bindnum;
 }
-/*
-    		foreach(lc, fmstate->retrieved_attrs)
-	    	{
-	    		int			attnum = lfirst_int(lc) - 1;
-	    		Form_pg_attribute att = TupleDescAttr(slots[i]->tts_tupleDescriptor, attnum);
-	    		bool		isnull;
-#if PG_VERSION_NUM >= 140000
-	    		Form_pg_attribute attr = TupleDescAttr(tupdesc, attnum);
-	    		/ * Ignore generated columns and skip bind value 
-	    		if (attr->attgenerated)
-	    			continue;
-#else
-
-#endif
-	    		value = slot_getattr(slots[i], attnum + 1, &isnull);
-	    		sqlite_bind_sql_var(att, bindnum, value, fmstate->stmt, &isnull, foreignTableId);
-	    		bindnum++;
-	    		*/
 
 /*
  * sqlite_execute_foreign_modify 

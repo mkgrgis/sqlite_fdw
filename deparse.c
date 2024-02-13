@@ -1673,11 +1673,11 @@ sqlite_deparse_range_tbl_ref(StringInfo buf, PlannerInfo *root, RelOptInfo *fore
  */
 static void
 sqlite_deparseReturningList(StringInfo buf, PlannerInfo *root,
-					 Index rtindex, Relation rel,
-					 bool trig_after_row,
-					 List *withCheckOptionList,
-					 List *returningList,
-					 List **retrieved_attrs)
+        		        	Index rtindex, Relation rel,
+	        				bool trig_after_row,
+	        				List *withCheckOptionList,
+	        				List *returningList,
+	        				List **retrieved_attrs)
 {
 	Bitmapset  *attrs_used = NULL;
 
@@ -1703,13 +1703,13 @@ sqlite_deparseReturningList(StringInfo buf, PlannerInfo *root,
 		pull_varattnos((Node *) withCheckOptionList, rtindex,
 					   &attrs_used);
 	}
-
+/*
 	if (returningList != NIL)
 	{
 		/*
 		 * We need the attrs, non-system and system, mentioned in the local
 		 * query's RETURNING list.
-		 */
+		 * /
 		pull_varattnos((Node *) returningList, rtindex,
 					   &attrs_used);
 	}
@@ -1720,6 +1720,7 @@ sqlite_deparseReturningList(StringInfo buf, PlannerInfo *root,
 	}
 	else
 		*retrieved_attrs = NIL;
+*/		
 }
 
 /*
@@ -1731,10 +1732,10 @@ sqlite_deparseReturningList(StringInfo buf, PlannerInfo *root,
  */
 void
 sqlite_deparseInsertSql(StringInfo buf, PlannerInfo *root,
-							 Index rtindex, Relation rel,
-							 List *targetAttrs, bool doNothing,
-							 List *withCheckOptionList, List *returningList,
-							 List **retrieved_attrs, int *values_end_len)
+					    Index rtindex, Relation rel,
+					    List *targetAttrs, bool doNothing,
+					    List *withCheckOptionList, List *returningList,
+					    List **retrieved_attrs, int *values_end_len)
 {
 #if PG_VERSION_NUM >= 140000
 	TupleDesc	tupdesc = RelationGetDescr(rel);
@@ -1826,6 +1827,14 @@ sqlite_deparseInsertSql(StringInfo buf, PlannerInfo *root,
 	}
 	else
 		appendStringInfoString(buf, " DEFAULT VALUES");
+
+    if (doNothing)
+		appendStringInfoString(buf, " ON CONFLICT DO NOTHING");
+
+	sqlite_deparseReturningList(buf, root, rtindex, rel,
+								rel->trigdesc && rel->trigdesc->trig_insert_after_row,
+								withCheckOptionList, returningList, retrieved_attrs);
+
 	*values_end_len = buf->len;
 }
 
@@ -2313,11 +2322,11 @@ sqlite_deparse_expr(Expr *node, deparse_expr_cxt *context)
  */
 void
 sqlite_deparseUpdateSql(StringInfo buf, PlannerInfo *root,
-						 Index rtindex, Relation rel,
-						 List *targetAttrs,
-						 List *withCheckOptionList, List *returningList,
-						 List **retrieved_attrs,
-						 List *condAttr)
+						Index rtindex, Relation rel,
+						List *targetAttrs,
+						List *withCheckOptionList, List *returningList,
+						List **retrieved_attrs,
+						List *conditionAttr)
 {
 #if PG_VERSION_NUM >= 140000
 	TupleDesc	tupdesc = RelationGetDescr(rel);
@@ -2353,7 +2362,7 @@ sqlite_deparseUpdateSql(StringInfo buf, PlannerInfo *root,
 #endif
 	}
 	i = 0;
-	foreach(lc, condAttr)
+	foreach(lc, conditionAttr)
 	{
 		int			attnum = lfirst_int(lc);
 
@@ -2362,6 +2371,10 @@ sqlite_deparseUpdateSql(StringInfo buf, PlannerInfo *root,
 		appendStringInfo(buf, "=?");
 		i++;
 	}
+	
+	sqlite_deparseReturningList(buf, root, rtindex, rel,
+								rel->trigdesc && rel->trigdesc->trig_insert_after_row,
+								withCheckOptionList, returningList, retrieved_attrs);
 }
 
 /*
@@ -2466,17 +2479,17 @@ sqlite_deparse_direct_update_sql(StringInfo buf, PlannerInfo *root,
  */
 void
 sqlite_deparseDeleteSql(StringInfo buf, PlannerInfo *root,
-						 Index rtindex, Relation rel,
-						 List *returningList,
-						 List **retrieved_attrs,
-						 List *condAttr)
+						Index rtindex, Relation rel,
+						List *returningList,
+						List **retrieved_attrs,
+						List *conditionAttr)
 {
 	int			i = 0;
 	ListCell   *lc;
 
 	appendStringInfoString(buf, "DELETE FROM ");
 	sqlite_deparse_relation(buf, rel);
-	foreach(lc, condAttr)
+	foreach(lc, conditionAttr)
 	{
 		int			attnum = lfirst_int(lc);
 
@@ -2485,6 +2498,10 @@ sqlite_deparseDeleteSql(StringInfo buf, PlannerInfo *root,
 		appendStringInfo(buf, "=?");
 		i++;
 	}
+	
+    sqlite_deparseReturningList(buf, root, rtindex, rel,
+								rel->trigdesc && rel->trigdesc->trig_delete_after_row,
+								NIL, returningList, retrieved_attrs);
 }
 
 /*
