@@ -2071,6 +2071,7 @@ sqlite_deparse_column_ref(StringInfo buf, int varno, int varattno, PlannerInfo *
 		/* Required only to be passed down to deparseTargetList(). */
 		List	   *retrieved_attrs;
 
+		elog(DEBUG4, "sqlite_fdw : %s , whole row reference", __func__);
 		/*
 		 * The lock on the relation will be held by upper callers, so it's
 		 * fine to open it with no lock here.
@@ -2115,7 +2116,7 @@ sqlite_deparse_column_ref(StringInfo buf, int varno, int varattno, PlannerInfo *
 		ListCell   *lc;
 		Oid			pg_atttyp = 0;
 
-		elog(DEBUG3, "sqlite_fdw : %s , varattrno != 0", __func__);
+		elog(DEBUG4, "sqlite_fdw : %s , col reference", __func__);
 		/* varno must not be any of OUTER_VAR, INNER_VAR and INDEX_VAR. */
 		Assert(!IS_SPECIAL_VARNO(varno));
 
@@ -2131,10 +2132,9 @@ sqlite_deparse_column_ref(StringInfo buf, int varno, int varattno, PlannerInfo *
 			if (strcmp(def->defname, "column_name") == 0)
 			{
 				colname = defGetString(def);
-				elog(DEBUG3, "opt = %s\n", def->defname);
+				elog(DEBUG1, "altered column name = %s\n", colname);
 				break;
 			}
-			elog(DEBUG1, "column name = %s\n", colname);
 		}
 
 		/*

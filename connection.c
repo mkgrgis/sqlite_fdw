@@ -1024,7 +1024,7 @@ sqlite_cache_stmt(ForeignServer *server, sqlite3_stmt * *stmt)
 }
 
 /*
- * finalize all sqlite statement
+ * finalize all SQLite statement
  */
 static void
 sqlite_finalize_list_stmt(List **list)
