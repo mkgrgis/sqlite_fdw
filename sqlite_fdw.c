@@ -504,7 +504,7 @@ sqlite_prepare_wrapper(ForeignServer *server, sqlite3 * db, char *query, sqlite3
 {
 	int			rc;
 
-	elog(DEBUG1, "sqlite_fdw : %s %s\n", __func__, query);
+	elog(DEBUG1, "sqlite_fdw : %s \nSQL ->> %s", __func__, query);
 	rc = sqlite3_prepare_v2(db, query, -1, stmt, pzTail);
 	if (rc != SQLITE_OK)
 	{
@@ -517,7 +517,6 @@ sqlite_prepare_wrapper(ForeignServer *server, sqlite3 * db, char *query, sqlite3
 	if (is_cache)
 		sqlite_cache_stmt(server, stmt);
 }
-
 
 /*
  * sqliteGetForeignRelSize: Create a FdwPlan for a scan on the foreign table
@@ -1653,8 +1652,6 @@ sqliteIterateForeignScan(ForeignScanState *node)
 	TupleDesc			tupleDescriptor = tupleSlot->tts_tupleDescriptor;
 	int					rc = 0;
 
-	elog(DEBUG1, "sqlite_fdw : %s", __func__);
-
 	/*
 	 * If this is the first call after Begin or ReScan, we need to create the
 	 * cursor on the remote side. Binding parameters is done in this function.
@@ -1678,6 +1675,7 @@ sqliteIterateForeignScan(ForeignScanState *node)
 		/* festate->rows need longer context than per tuple */
 		MemoryContext oldcontext = MemoryContextSwitchTo(estate->es_query_cxt);
 
+		elog(DEBUG2, "sqlite_fdw : %s for update, festate->rowidx == 0", __func__);
 		festate->row_nums = 0;
 		festate->rowidx = 0;
 		while (1)
@@ -1736,6 +1734,7 @@ sqliteIterateForeignScan(ForeignScanState *node)
 	}
 	else
 	{
+		elog(DEBUG2, "sqlite_fdw : %s, NO update", __func__);
 		rc = sqlite3_step(festate->stmt);
 		if (SQLITE_ROW == rc)
 		{
@@ -2068,13 +2067,11 @@ sqliteBeginForeignModify(ModifyTableState *mtstate,
 	Oid			typefnoid = InvalidOid;
 	bool		isvarlena = false;
 	ListCell   *lc = NULL;
-	Oid			foreignTableId = InvalidOid;
+	Oid			foreignTableId = RelationGetRelid(rel);
 	Plan	   *subplan;
 	int			i;
 
-	elog(DEBUG1, " sqlite_fdw : %s", __func__);
-
-	foreignTableId = RelationGetRelid(rel);
+	elog(DEBUG1, "sqlite_fdw : %s", __func__);
 #if (PG_VERSION_NUM >= 140000)
 	subplan = outerPlanState(mtstate)->plan;
 #else
@@ -2162,8 +2159,8 @@ sqliteBeginForeignModify(ModifyTableState *mtstate,
 #endif
 													 ));
 	}
-
 }
+
 #if (PG_VERSION_NUM >= 110000)
 static void
 sqliteBeginForeignInsert(ModifyTableState *mtstate,
@@ -2171,12 +2168,14 @@ sqliteBeginForeignInsert(ModifyTableState *mtstate,
 {
 	elog(ERROR, "Not support partition insert");
 }
+
 static void
 sqliteEndForeignInsert(EState *estate,
 					   ResultRelInfo *resultRelInfo)
 {
 	elog(ERROR, "Not support partition insert");
 }
+
 #endif
 /*
  * sqliteExecForeignInsert
