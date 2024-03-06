@@ -1835,13 +1835,6 @@ sqlite_deparseInsertSql(StringInfo buf, PlannerInfo *root,
 								withCheckOptionList, returningList, retrieved_attrs);
 
 	*values_end_len = buf->len;
-
-	if (doNothing)
-		appendStringInfoString(buf, " ON CONFLICT DO NOTHING");
-
-	sqlite_deparseReturningList(buf, root, rtindex, rel,
-								rel->trigdesc && rel->trigdesc->trig_insert_after_row,
-								withCheckOptionList, returningList, retrieved_attrs);
 }
 
 #if PG_VERSION_NUM >= 140000
@@ -1898,70 +1891,6 @@ sqlite_rebuild_insert(StringInfo buf, Relation rel, char *orig_query,
 	appendStringInfoString(buf, orig_query + values_end_len);
 }
 #endif
-
-/*
- * deparse remote UPDATE statement
- *
- * The statement text is appended to buf, and we also create an integer List
- * of the columns being retrieved by RETURNING (if any), which is returned
- * to *retrieved_attrs.
- */
-void
-sqlite_deparseUpdateSql(StringInfo buf, PlannerInfo *root,
-						 Index rtindex, Relation rel,
-						 List *targetAttrs,
-						 List *withCheckOptionList, List *returningList,
-						 List **retrieved_attrs,
-						 List *condAttr)
-{
-#if PG_VERSION_NUM >= 140000
-	TupleDesc	tupdesc = RelationGetDescr(rel);
-#endif
-	AttrNumber	pindex;
-	bool		first;
-	ListCell   *lc;
-	int			i;
-
-	elog(DEBUG3, "sqlite_fdw : %s", __func__);
-	appendStringInfoString(buf, "UPDATE ");
-	sqlite_deparse_relation(buf, rel);
-	appendStringInfoString(buf, " SET ");
-
-	pindex = 2;
-	first = true;
-	foreach(lc, targetAttrs)
-	{
-		int			attnum = lfirst_int(lc);
-#if PG_VERSION_NUM >= 140000
-		Form_pg_attribute attr = TupleDescAttr(tupdesc, attnum - 1);
-
-		if (!attr->attgenerated)
-		{
-#endif
-			if (!first)
-				appendStringInfoString(buf, ", ");
-			first = false;
-			sqlite_deparse_column_ref(buf, rtindex, attnum, root, false, true);
-			appendStringInfo(buf, " = ?");
-			pindex++;
-#if PG_VERSION_NUM >= 140000
-		}
-#endif
-	}
-	i = 0;
-	foreach(lc, condAttr)
-	{
-		int			attnum = lfirst_int(lc);
-
-		appendStringInfo(buf, i == 0 ? " WHERE " : " AND ");
-		sqlite_deparse_column_ref(buf, rtindex, attnum, root, false, true);
-		appendStringInfo(buf, "=?");
-		i++;
-	}
-	sqlite_deparseReturningList(buf, root, rtindex, rel,
-								rel->trigdesc && rel->trigdesc->trig_update_after_row,
-								withCheckOptionList, returningList, retrieved_attrs);
-}
 
 /*
  * deparse remote UPDATE statement
@@ -2054,40 +1983,6 @@ sqlite_deparse_direct_update_sql(StringInfo buf, PlannerInfo *root,
 		appendStringInfoString(buf, " WHERE ");
 		sqlite_append_conditions(remote_conds, &context);
 	}
-}
-
-/*
- * deparse remote DELETE statement
- *
- * The statement text is appended to buf, and we also create an integer List
- * of the columns being retrieved by RETURNING (if any), which is returned
- * to *retrieved_attrs.
- */
-void
-sqlite_deparseDeleteSql(StringInfo buf, PlannerInfo *root,
-						 Index rtindex, Relation rel,
-						 List *returningList,
-						 List **retrieved_attrs,
-						 List *condAttr)
-{
-	int			i = 0;
-	ListCell   *lc;
-
-	elog(DEBUG3, "sqlite_fdw : %s", __func__);
-	appendStringInfoString(buf, "DELETE FROM ");
-	sqlite_deparse_relation(buf, rel);
-	foreach(lc, condAttr)
-	{
-		int			attnum = lfirst_int(lc);
-
-		appendStringInfo(buf, i == 0 ? " WHERE " : " AND ");
-		sqlite_deparse_column_ref(buf, rtindex, attnum, root, false, true);
-		appendStringInfo(buf, "=?");
-		i++;
-	}
-	sqlite_deparseReturningList(buf, root, rtindex, rel,
-								rel->trigdesc && rel->trigdesc->trig_delete_after_row,
-								NIL, returningList, retrieved_attrs);
 }
 
 /*
