@@ -336,8 +336,8 @@ extern void sqlite_deparse_select_stmt_for_rel(StringInfo buf, PlannerInfo *root
 											   bool has_final_sort, bool has_limit, bool is_subquery,
 											   List **retrieved_attrs, List **params_list);
 extern void sqlite_deparseInsertSql(StringInfo buf,
-                                    PlannerInfo *root,
-        							Index rtindex,
+                      PlannerInfo *root,
+              				Index rtindex,
         							Relation rel,
         							List *targetAttrs,
         							bool doNothing,
@@ -349,14 +349,12 @@ extern void sqlite_deparseInsertSql(StringInfo buf,
 extern void sqlite_rebuild_insert(StringInfo buf, Relation rel, char *orig_query, List *target_attrs, int values_end_len, int num_params, int num_rows);
 extern void sqlite_deparse_truncate(StringInfo buf, List *rels);
 #endif
-extern void sqlite_deparseUpdateSql(StringInfo buf,
-                                    PlannerInfo *root,
-        							Index rtindex, Relation rel,
-		        					List *targetAttrs,
-		        					List *withCheckOptionList,
-		        					List *returningList,
-		        					List **retrieved_attrs,
-		        					List *condAttr);
+extern void sqlite_deparseUpdateSql(StringInfo buf, PlannerInfo *root,
+							 Index rtindex, Relation rel,
+							 List *targetAttrs,
+							 List *withCheckOptionList, List *returningList,
+							 List **retrieved_attrs,
+							 List *condAttr);
 extern void sqlite_deparse_direct_update_sql(StringInfo buf, PlannerInfo *root,
 											 Index rtindex, Relation rel,
 											 RelOptInfo *foreignrel,

@@ -1897,13 +1897,13 @@ sqlitePlanForeignModify(PlannerInfo *root,
 	CmdType			operation = plan->operation;
 	RangeTblEntry  *rte = planner_rt_fetch(resultRelation, root);
 	Relation		rel;
+	StringInfoData  sql;
 	List		   *targetAttrs = NULL;
 	List		   *withCheckOptionList = NIL;
 	List		   *returningList = NIL;
 	List		   *retrieved_attrs = NIL;
 	bool			doNothing = false;
 	int				values_end_len = -1;
-	StringInfoData  sql;
 	Oid				foreignTableId;
 	TupleDesc		tupdesc;
 	int				i;
@@ -1968,6 +1968,19 @@ sqlitePlanForeignModify(PlannerInfo *root,
 	}
 
 	/*
+	 * Extract the relevant WITH CHECK OPTION list if any.
+	 */
+	if (plan->withCheckOptionLists)
+		withCheckOptionList = (List *) list_nth(plan->withCheckOptionLists,
+												subplan_index);
+
+	/*
+	 * Extract the relevant RETURNING list if any.
+	 */
+	if (plan->returningLists)
+		returningList = (List *) list_nth(plan->returningLists, subplan_index);
+
+  /*
 	 * ON CONFLICT DO UPDATE and DO NOTHING case with inference specification
 	 * should have already been rejected in the optimizer, as presently there
 	 * is no way to recognize an arbiter index on a foreign table.  Only DO
