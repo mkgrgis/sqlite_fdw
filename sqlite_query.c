@@ -508,7 +508,7 @@ sqlite_bind_sql_var(Form_pg_attribute att, int attnum, Datum value, sqlite3_stmt
 	Oid			type = att->atttypid;
 	int32		pgtypmod = att->atttypmod;
 	attnum++;
-	elog(DEBUG2, "sqlite_fdw : %s %d type=%u relid=%u typmod=%d ", __func__, attnum, type, relid, pgtypmod);
+	elog(DEBUG2, "sqlite_fdw : %s %d type=%u typmod=%d", __func__, attnum, type, pgtypmod);
 
 	if (*isnull)
 	{
