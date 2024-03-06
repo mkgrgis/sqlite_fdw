@@ -121,25 +121,32 @@ enum FdwScanPrivateIndex
 	FdwScanPrivateRelations
 };
 
-/*
- * Similarly, this enum describes what's kept in the fdw_private list for
- * a ModifyTable node referencing a sqlite_fdw foreign table.  We store:
- *
- * 1) INSERT/UPDATE/DELETE statement text to be sent to the remote server
- * 2) Integer list of target attribute numbers for INSERT/UPDATE
- *	  (NIL for a DELETE)
- * 3) Length till the end of VALUES clause for INSERT
- *	  (-1 for a DELETE/UPDATE)
- */
-enum FdwModifyPrivateIndex
-{
-	/* SQL statement to execute remotely (as a String node) */
-	FdwModifyPrivateUpdateSql,
-	/* Integer list of target attribute numbers for INSERT/UPDATE */
-	FdwModifyPrivateTargetAttnums,
-	/* Length till the end of VALUES clause (as an Integer node) */
-	FdwModifyPrivateLen
-};
+ /*
+  * Similarly, this enum describes what's kept in the fdw_private list for
+  * a ModifyTable node referencing a postgres_fdw foreign table.  We store:
+  *
+  * 1) INSERT/UPDATE/DELETE statement text to be sent to the remote server
+  * 2) Integer list of target attribute numbers for INSERT/UPDATE
+  *    (NIL for a DELETE)
+  * 3) Length till the end of VALUES clause for INSERT
+  *    (-1 for a DELETE/UPDATE)
+  * 4) Boolean flag showing if the remote query has a RETURNING clause
+  * 5) Integer list of attribute numbers retrieved by RETURNING, if any
+  */
+ enum FdwModifyPrivateIndex
+ {
+     /* SQL statement to execute remotely (as a String node) */
+     FdwModifyPrivateUpdateSql,
+     /* Integer list of target attribute numbers for INSERT/UPDATE */
+     FdwModifyPrivateTargetAttnums,
+     /* Length till the end of VALUES clause (as an Integer node) */
+     FdwModifyPrivateLen,
+     /* has-returning flag (as a Boolean node) */
+     FdwModifyPrivateHasReturning,
+     /* Integer list of attribute numbers retrieved by RETURNING */
+     FdwModifyPrivateRetrievedAttrs,
+ };
+
 
 /*
  * Similarly, this enum describes what's kept in the fdw_private list for
@@ -1960,11 +1967,6 @@ sqlitePlanForeignModify(PlannerInfo *root,
 		}
 	}
 
-	if (plan->returningLists)
-		ereport(ERROR,
-				(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
-				 errmsg("RETURNING clause is not supported")));
-
 	/*
 	 * ON CONFLICT DO UPDATE and DO NOTHING case with inference specification
 	 * should have already been rejected in the optimizer, as presently there
@@ -2014,12 +2016,6 @@ sqlitePlanForeignModify(PlannerInfo *root,
 	if (plan->returningLists)
 		returningList = (List *) list_nth(plan->returningLists, subplan_index);
 
-	/*if (plan->returningLists)
-	 *	ereport(ERROR,
-	 *		(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
-	 *			 errmsg("RETURNING clause is not supported")));
-	 */
-
 	/*
 	 * Construct the SQL command string.
 	 */
@@ -2050,7 +2046,28 @@ sqlitePlanForeignModify(PlannerInfo *root,
 	}
 
 	table_close(rel, NoLock);
-	return list_make3(makeString(sql.data), targetAttrs, makeInteger(values_end_len));
+
+	/*
+	 * Build the fdw_private list that will be available to the executor.
+	 * Items in the list must match enum FdwModifyPrivateIndex, above.
+	 */	
+
+#if (PG_VERSION_NUM >= 140000)					  
+	return list_make5(makeString(sql.data),
+					  targetAttrs,
+					  makeInteger(values_end_len),
+	#if (PG_VERSION_NUM >= 150000)					  
+					  makeBoolean((retrieved_attrs != NIL)),
+	#else					  
+					  makeInteger((retrieved_attrs != NIL)),
+	#endif					  
+					  retrieved_attrs);
+#else
+	return list_make4(makeString(sql.data),
+					  targetAttrs,
+					  makeInteger(values_end_len),
+					  retrieved_attrs);
+#endif
 }
 
 static void
