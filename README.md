@@ -36,12 +36,12 @@ Features
 - Support Bulk `INSERT` by using `batch_size` option
 - Support `INSERT`/`UPDATE` with generated column
 - Support `ON CONFLICT DO NOTHING`
-- Support mixed SQLite [data affinity](https://www.sqlite.org/datatype3.html) input and filtering (`SELECT`/`WHERE` usage) for such dataypes as
+- Support mixed SQLite [data affinity](https://www.sqlite.org/datatype3.html) input and filtering (`SELECT`/`WHERE` usage) for such data types as
 	- `timestamp`: `text` and `int`,
 	- `uuid`: `text`(32..39) and `blob`(16),
  	- `bool`: `text`(1..5) and `int`,
  	- `double precision`, `float` and `numeric`: `real` values and special values with `text` affinity (`+Infinity` and `-Infinity`).
-- Support mixed SQLite [data affinity](https://www.sqlite.org/datatype3.html) output (`INSERT`/`UPDATE`) for such dataypes as
+- Support mixed SQLite [data affinity](https://www.sqlite.org/datatype3.html) output (`INSERT`/`UPDATE`) for such data types as
 	- `timestamp`: `text`(default) or `int`,
  	- `uuid`: `text`(36) or `blob`(16)(default).
 - Full support for `+Infinity` (means ∞) and `-Infinity` (means -∞) special values for IEEE 754-2008 numbers in `double precision`, `float` and `numeric` columns including such conditions as ` n < '+Infinity'` or ` m > '-Infinity'`.
@@ -57,7 +57,7 @@ Features
 - `mod()` is pushdowned. In PostgreSQL gives [argument-dependend data type](https://www.postgresql.org/docs/current/functions-math.html), but result from SQLite always [have `real` affinity](https://www.sqlite.org/lang_mathfunc.html#mod).
 - `upper`, `lower` and other character case functions are **not** pushed down because they does not work with UNICODE character in SQLite.
 - `WITH TIES` option is **not** pushed down.
-- Bit string `#` (XOR) operator is **not** pushed down becasuse there is no equal SQLite operator.
+- Bit string `#` (XOR) operator is **not** pushed down because there is no equal SQLite operator.
 
 ### Notes about pushdowning
 
@@ -71,7 +71,7 @@ Features
 - For `numeric` data type, `sqlite_fdw` use `sqlite3_column_double` to get value, while SQLite shell uses `sqlite3_column_text` to get value. Those 2 APIs may return different numeric value. Therefore, for `numeric` data type, the value returned from `sqlite_fdw` may different from the value returned from SQLite shell.
 - `sqlite_fdw` can return implementation-dependent order for column if the column is not specified in `ORDER BY` clause.
 - When the column type is `varchar array`, if the string is shorter than the declared length, values of type character will be space-padded; values of type `character varying` will simply store the shorter string.
-- [String literals for `boolean`](https://www.postgresql.org/docs/current/datatype-boolean.html) (`t`, `f`, `y`, `n`, `yes`, `no`, `on`, `off` etc. case insensetive) can be readed and filtred but cannot writed, because SQLite documentation recommends only `int` affinity values (`0` or `1`)  for boolean data and usually text boolean data belongs to legacy datasets.
+- [String literals for `boolean`](https://www.postgresql.org/docs/current/datatype-boolean.html) (`t`, `f`, `y`, `n`, `yes`, `no`, `on`, `off` etc. case insensitive) can be readed and filtred but cannot writed, because SQLite documentation recommends only `int` affinity values (`0` or `1`)  for boolean data and usually text boolean data belongs to legacy datasets.
 
 Also see [Limitations](#limitations)
 
@@ -301,7 +301,7 @@ sqlite_fdw_version
 Identifier case handling
 ------------------------
 
-PostgreSQL folds identifiers to lower case by default, SQLite is case insensetive by default
+PostgreSQL folds identifiers to lower case by default, SQLite is case insensitive by default
 and doesn't differ uppercase and lowercase ASCII base latin letters. It's important
 to be aware of potential issues with table and column names.
 
@@ -538,8 +538,8 @@ SQLite `text` affinity values which is different for SQLite unique checks can be
 - SQLite promises to preserve the 15 most significant digits of a floating point value. The big value which exceed 15 most significant digits may become different value after inserted.
 - SQLite does not support `numeric` type as PostgreSQL. Therefore, it does not allow to store numbers with too high precision and scale. Error out of range occurs.
 - SQLite does not support `NaN` special value for IEEE 754-2008 numbers. Please use this special value very cerefully because there is no such conception in SQLite at all and `NaN` value treated in SQLite as `NULL`.
-- SQLite support `+Infinity` and `-Infinity` special values for IEEE 754-2008 numbers in SQL expressions with numeric context. This values can be readed with both `text` and `real` affiniy, but can be writed to SQLite only with `real` affinity (as
-signed out of range value `9e999`).
+- SQLite support `+Infinity` and `-Infinity` special values for IEEE 754-2008 numbers in SQL expressions with numeric context. This values can be readed with both `text` and `real` affiniy, but can be writed to SQLite only with `real` affinity (as signed out of range value `9e999`).
+
 ### Boolean values
 - `sqlite_fdw` boolean values support exists only for `bool` columns in foreign table. SQLite documentation recommends to store boolean as value with `integer` [affinity](https://www.sqlite.org/datatype3.html). `NULL` isn't converted, 1 converted to `true`, all other `NOT NULL` values converted to `false`. During `SELECT ... WHERE condition_column` condition converted only to `condition_column`.
 - `sqlite_fdw` don't provides limited support of boolean values if `bool` column in foreign table mapped to SQLite `text` [affinity](https://www.sqlite.org/datatype3.html).
@@ -551,7 +551,7 @@ for `INSERT` and `UPDATE` commands. PostgreSQL supports both `blob` and `text` [
 
 ### bit and varbit support
 - `sqlite_fdw` PostgreSQL `bit`/`varbit` values support based on `int` SQLite data affinity, because there is no per bit operations for SQLite `blob` affinity data. Maximum SQLite `int` affinity value is 8 bytes length, hence maximum `bit`/`varbit` values length is 64 bits.
-- `sqlite_fdw` doesn't pushdown `#` (XOR) operator becasuse there is no equal SQLite operator.
+- `sqlite_fdw` doesn't pushdown `#` (XOR) operator because there is no equal SQLite operator.
 
 Tests
 -----
