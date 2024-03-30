@@ -2063,17 +2063,17 @@ sqlitePlanForeignModify(PlannerInfo *root,
 	/*
 	 * Build the fdw_private list that will be available to the executor.
 	 * Items in the list must match enum FdwModifyPrivateIndex, above.
-	 */	
+	 */
 
-#if (PG_VERSION_NUM >= 140000)					  
+#if (PG_VERSION_NUM >= 140000)
 	return list_make5(makeString(sql.data),
 					  targetAttrs,
 					  makeInteger(values_end_len),
-	#if (PG_VERSION_NUM >= 150000)					  
+	#if (PG_VERSION_NUM >= 150000)
 					  makeBoolean((retrieved_attrs != NIL)),
-	#else					  
+	#else
 					  makeInteger((retrieved_attrs != NIL)),
-	#endif					  
+	#endif
 					  retrieved_attrs);
 #else
 	return list_make4(makeString(sql.data),
