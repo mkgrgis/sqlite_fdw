@@ -339,6 +339,7 @@ sqlite_is_valid_type(Oid type)
 		case TIMESTAMPOID:
 		case TIMESTAMPTZOID:
 		case UUIDOID:
+		case MACADDROID:		
 			return true;
 	}
 	return false;
@@ -2098,6 +2099,24 @@ sqlite_deparse_column_ref(StringInfo buf, int varno, int varattno, PlannerInfo *
 			appendStringInfoString(buf, sqlite_quote_identifier(colname, '`'));
 			appendStringInfoString(buf, ")");
 		}
+		else if (!dml_context && pg_atttyp == MACADDROID)
+		{
+			elog(DEBUG2, "MAC address unification for \"%s\"", colname);
+			appendStringInfoString(buf, "sqlite_fdw_macaddr_blob(");
+			if (qualify_col)
+				ADD_REL_QUALIFIER(buf, varno);
+			appendStringInfoString(buf, sqlite_quote_identifier(colname, '`'));
+			appendStringInfoString(buf, ", 6)");
+		}
+		else if (!dml_context && pg_atttyp == MACADDR8OID)
+		{
+			elog(DEBUG2, "MAC address unification for \"%s\"", colname);
+			appendStringInfoString(buf, "sqlite_fdw_macaddr_blob(");
+			if (qualify_col)
+				ADD_REL_QUALIFIER(buf, varno);
+			appendStringInfoString(buf, sqlite_quote_identifier(colname, '`'));
+			appendStringInfoString(buf, ", 8)");
+		}
 		else
 		{
 			elog(DEBUG4, "column name without data unification = \"%s\"", colname);
@@ -2412,12 +2431,24 @@ sqlite_deparse_direct_update_sql(StringInfo buf, PlannerInfo *root,
 		appendStringInfoString(buf, " = ");
 
 		special_affinity = (pg_attyp == UUIDOID && preferred_affinity == SQLITE3_TEXT) ||
-						   (pg_attyp == TIMESTAMPOID && preferred_affinity == SQLITE_INTEGER);
+						   (pg_attyp == TIMESTAMPOID && preferred_affinity == SQLITE_INTEGER) ||
+						   (pg_attyp == MACADDROID && preferred_affinity == SQLITE_INTEGER) ||
+						   (pg_attyp == MACADDROID && preferred_affinity == SQLITE_TEXT) ||
+						   (pg_attyp == MACADDR8OID && preferred_affinity == SQLITE_INTEGER) ||
+						   (pg_attyp == MACADDR8OID && preferred_affinity == SQLITE_TEXT);
 		if (special_affinity)
 		{
 			elog(DEBUG3, "sqlite_fdw : aff %d\n", preferred_affinity);
 			if (pg_attyp == UUIDOID && preferred_affinity == SQLITE3_TEXT)
 				appendStringInfo(buf, "sqlite_fdw_uuid_str(");
+			if (pg_attyp == MACADDROID && preferred_affinity == SQLITE3_TEXT)
+				appendStringInfo(buf, "sqlite_fdw_macaddr_str(");
+			if (pg_attyp == MACADDROID && preferred_affinity == SQLITE_INTEGER)
+				appendStringInfo(buf, "sqlite_fdw_macaddr_int(");
+			if (pg_attyp == MACADDR8OID && preferred_affinity == SQLITE3_TEXT)
+				appendStringInfo(buf, "sqlite_fdw_macaddr_str(");
+			if (pg_attyp == MACADDR8OID && preferred_affinity == SQLITE_INTEGER)
+				appendStringInfo(buf, "sqlite_fdw_macaddr_int(");
 			if (pg_attyp == TIMESTAMPOID && preferred_affinity == SQLITE_INTEGER)
 				appendStringInfo(buf, "strftime(");
 		}
@@ -2727,6 +2758,8 @@ sqlite_deparse_const(Const *node, deparse_expr_cxt *context, int showtype)
 			}
 			break;
 		case UUIDOID:
+		case MACADDROID:
+		case MACADDR8OID:
 			/* always deparse to BLOB because this is internal PostgreSQL storage
 			 * the string for BYTEA always seems to be in the format "\\x##"
 			 * where # is a hex digit, Even if the value passed in is
@@ -2741,7 +2774,7 @@ sqlite_deparse_const(Const *node, deparse_expr_cxt *context, int showtype)
 				for (i = 0; i < strlen(extval); i++)
 				{
 					char c = extval[i];
-					if ( c != '-' )
+					if ( c != '-' && c != '.' && c != ':')
 						appendStringInfoChar(buf, c);
 				}
 	  			appendStringInfo(buf, "\'");

@@ -21,6 +21,7 @@
 #include "nodes/makefuncs.h"
 #include "parser/parse_type.h"
 #include "utils/builtins.h"
+#include "utils/inet.h"
 #include "utils/lsyscache.h"
 #include "utils/timestamp.h"
 #include "utils/uuid.h"
@@ -394,6 +395,59 @@ sqlite_convert_to_pg(Form_pg_attribute att, sqlite3_value * val, AttInMetadata *
 				}
 				break;
 			}
+		case MACADDROID:
+			{
+				switch (sqlite_value_affinity)
+				{
+					case SQLITE_INTEGER:
+					case SQLITE_FLOAT:
+						{
+							sqlite_value_to_pg_error();
+							break;
+						}
+					case SQLITE_BLOB: /* <-- proper and recommended SQLite affinity of value for pgtyp */
+						{
+							if (value_byte_size_blob_or_utf8 != MACADDR_LEN)
+							{
+								ereport(ERROR, (errcode(ERRCODE_FDW_INVALID_DATA_TYPE),
+												errmsg("PostgreSQL macaddr data type allows only %d bytes SQLite blob value", MACADDR_LEN)));
+								break;
+							}
+						else
+							{
+								const unsigned char * sqlite_blob = 0;
+								macaddr * retval = (macaddr *) palloc(sizeof(macaddr));
+
+   								sqlite_blob = sqlite3_value_blob(val);
+								retval->a = sqlite_blob[0];
+								retval->b = sqlite_blob[1];
+								retval->c = sqlite_blob[2];
+								retval->d = sqlite_blob[3];
+								retval->e = sqlite_blob[4];
+								retval->f = sqlite_blob[5];
+								return (struct NullableDatum){MacaddrPGetDatum(retval), false};
+								break;
+							}
+						}
+					/* SQLite MAC address output always normalized to blob.
+					 * In sqlite_data_norm.c there is special additional C function.
+					 */
+					case SQLITE3_TEXT:
+						{
+							if (value_byte_size_blob_or_utf8)
+								sqlite_value_to_pg_error();
+							else
+								pg_column_void_text_error();
+							break;
+						}
+					default:
+						{
+							sqlite_value_to_pg_error();
+							break;
+						}
+				}
+				break;
+			}
 		case VARBITOID:
 		case BITOID:
 			{
@@ -607,19 +661,19 @@ sqlite_bind_sql_var(Form_pg_attribute att, int attnum, Datum value, sqlite3_stmt
 			}
 		case UUIDOID:
 			{
-				bool		uuid_as_blob = false;
+				int	sqlite_aff = SQLITE_NULL;
 				if (relid)
 				{
 					char * optv = get_column_option_string (relid, attnum, "column_type");
-					elog(DEBUG3, "sqlite_fdw : col type %s ", optv);
-					if (optv != NULL && strcasecmp(optv, "BLOB") == 0)
-						uuid_as_blob = true;
-				}
 
-				if (uuid_as_blob)
+					elog(DEBUG3, "sqlite_fdw : col type %s ", optv);
+					sqlite_aff = sqlite_affinity_code(optv);
+				}
+				if (sqlite_aff == SQLITE_BLOB)
 				{
 					unsigned char *dat = palloc0(UUID_LEN);
 					pg_uuid_t* pg_uuid = DatumGetUUIDP(value);
+
 					elog(DEBUG2, "sqlite_fdw : bind uuid as blob");
 					memcpy(dat, pg_uuid->data, UUID_LEN);
 					ret = sqlite3_bind_blob(stmt, attnum, dat, UUID_LEN, SQLITE_TRANSIENT);
@@ -630,9 +684,115 @@ sqlite_bind_sql_var(Form_pg_attribute att, int attnum, Datum value, sqlite3_stmt
 					char	   *outputString = NULL;
 					Oid			outputFunctionId = InvalidOid;
 					bool		typeVarLength = false;
+
 					getTypeOutputInfo(type, &outputFunctionId, &typeVarLength);
 					outputString = OidOutputFunctionCall(outputFunctionId, value); /* uuid text belongs to ASCII subset, no need to translate encoding */
 					ret = sqlite3_bind_text(stmt, attnum, outputString, -1, SQLITE_TRANSIENT);
+				}
+				break;
+			}
+		case MACADDROID:
+			{
+				int	sqlite_aff = SQLITE_NULL;
+				if (relid)
+				{
+					char * optv = get_column_option_string (relid, attnum, "column_type");
+				
+					elog(DEBUG3, "sqlite_fdw : column_type affinity %s ", optv);
+					sqlite_aff = sqlite_affinity_code(optv);
+				}
+				if (sqlite_aff == SQLITE_INTEGER)
+				{
+					/* MAC as integer */
+					macaddr *m = DatumGetMacaddrP(value);
+					sqlite3_int64 dat = 0;
+
+					elog(DEBUG2, "sqlite_fdw : bind mac as integer");
+					dat = ((sqlite3_int64)m->a << (CHAR_BIT*5))
+						+ ((sqlite3_int64)m->b << (CHAR_BIT*4))
+						+ ((sqlite3_int64)m->c << (CHAR_BIT*3))
+						+ ((sqlite3_int64)m->d << (CHAR_BIT*2))
+						+ ((sqlite3_int64)m->e << (CHAR_BIT*1))
+						+ ((sqlite3_int64)m->f << (CHAR_BIT*0));
+					elog(DEBUG5, "sqlite_fdw : mac deparsed to int %lld", dat);						
+					ret = sqlite3_bind_int64(stmt, attnum, dat);
+				}
+				else if (sqlite_aff == SQLITE3_TEXT)
+				{
+					char	   *outputString = NULL;
+					Oid			outputFunctionId = InvalidOid;
+					bool		typeVarLength = false;
+					getTypeOutputInfo(type, &outputFunctionId, &typeVarLength);
+					outputString = OidOutputFunctionCall(outputFunctionId, value); /* MAC text belongs to ASCII subset, no need to translate encoding */
+					ret = sqlite3_bind_text(stmt, attnum, outputString, -1, SQLITE_TRANSIENT);
+				}
+				else
+				{
+					unsigned char  *mca = palloc0(MACADDR_LEN);
+					macaddr		   *m = DatumGetMacaddrP(value);
+
+					elog(DEBUG2, "sqlite_fdw : bind mac as blob");
+					mca[0] = m->a;
+					mca[1] = m->b;
+					mca[2] = m->c;
+					mca[3] = m->d;
+					mca[4] = m->e;
+					mca[5] = m->f;
+					ret = sqlite3_bind_blob(stmt, attnum, mca, MACADDR_LEN, SQLITE_TRANSIENT);
+				}
+				break;
+			}
+		case MACADDR8OID:
+			{
+				int	sqlite_aff = SQLITE_NULL;
+				if (relid)
+				{
+					char * optv = get_column_option_string (relid, attnum, "column_type");
+				
+					elog(DEBUG3, "sqlite_fdw : col type %s ", optv);
+					sqlite_aff = sqlite_affinity_code(optv);
+				}
+				if (sqlite_aff == SQLITE_INTEGER)
+				{
+					/* MAC as integer */
+					macaddr8 *m = DatumGetMacaddr8P(value);
+					sqlite3_int64 dat = 0;
+
+					elog(DEBUG2, "sqlite_fdw : bind mac8 as integer");
+					dat = ((sqlite3_int64)m->a << (CHAR_BIT*7))
+						+ ((sqlite3_int64)m->b << (CHAR_BIT*6))
+						+ ((sqlite3_int64)m->c << (CHAR_BIT*5))
+						+ ((sqlite3_int64)m->d << (CHAR_BIT*4))
+						+ ((sqlite3_int64)m->e << (CHAR_BIT*3))
+						+ ((sqlite3_int64)m->f << (CHAR_BIT*2))
+						+ ((sqlite3_int64)m->g << (CHAR_BIT*1))
+						+ ((sqlite3_int64)m->h << (CHAR_BIT*0));
+					ret = sqlite3_bind_int64(stmt, attnum, dat);
+				}
+				else if (sqlite_aff == SQLITE3_TEXT)
+				{
+					char	   *outputString = NULL;
+					Oid			outputFunctionId = InvalidOid;
+					bool		typeVarLength = false;
+					getTypeOutputInfo(type, &outputFunctionId, &typeVarLength);
+					outputString = OidOutputFunctionCall(outputFunctionId, value); /* MAC text belongs to ASCII subset, no need to translate encoding */
+					ret = sqlite3_bind_text(stmt, attnum, outputString, -1, SQLITE_TRANSIENT);
+				}
+				else
+				{
+					unsigned char  *mca = palloc0(MACADDR8_LEN);
+					macaddr8	   *m = DatumGetMacaddr8P(value);
+
+					elog(DEBUG2, "sqlite_fdw : bind mac8 as blob");
+					mca[0] = m->a;
+					mca[1] = m->b;
+					mca[2] = m->c;
+					mca[3] = m->d;
+					mca[4] = m->e;
+					mca[5] = m->f;
+					mca[6] = m->g;
+					mca[7] = m->h;
+					ret = sqlite3_bind_blob(stmt, attnum, mca, MACADDR8_LEN, SQLITE_TRANSIENT);
 				}
 				break;
 			}
