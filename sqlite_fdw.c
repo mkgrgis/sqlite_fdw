@@ -5143,6 +5143,8 @@ sqlite_to_pg_type(StringInfo str, char *type)
 		{"varchar"},
 		{"char"},
 		{"uuid"},
+		{"macaddr"},
+		{"macaddr8"},
 		{NULL}
 	};
 
@@ -5729,11 +5731,15 @@ sqlite_affinity_eqv_to_pgtype(Oid type)
 			return SQLITE_FLOAT;
 		case BYTEAOID:
 		case UUIDOID:
+		case MACADDROID:
+		case MACADDR8OID:
 			return SQLITE_BLOB;
 		default:
 			return SQLITE3_TEXT;
 	}
 }
+
+static const char *azType[] = { "?", "integer", "real", "text", "blob", "null" };
 
 /*
  * sqlite_datatype
