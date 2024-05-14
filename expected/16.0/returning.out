@@ -265,11 +265,11 @@ SELECT * FROM "type_TIME";
 --Testcase 60:
 EXPLAIN VERBOSE
 SELECT c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12, c13, c14, c15, c17, c18, c19, c2, c21, c22, c23, c24 FROM alltypetest;
-                                                                                                                                        QUERY PLAN                                                                                                                                        
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                           QUERY PLAN                                                                                           
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Foreign Scan on public.alltypetest  (cost=10.00..57.00 rows=57 width=1400)
    Output: c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12, c13, c14, c15, c17, c18, c19, c2, c21, c22, c23, c24
-   SQLite query: SELECT `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8`, `c9`, `c10`, `c11`, `c12`, `c13`, `c14`, `c15`, sqlite_fdw_float(`c17`), sqlite_fdw_float(`c18`), sqlite_fdw_float(`c19`), sqlite_fdw_float(`c21`), sqlite_fdw_float(`c22`), `c23`, `c24` FROM main."alltypetest"
+   SQLite query: SELECT `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8`, `c9`, `c10`, `c11`, `c12`, `c13`, `c14`, `c15`, `c17`, `c18`, `c19`, `c21`, `c22`, `c23`, `c24` FROM main."alltypetest"
 (3 rows)
 
 --Testcase 61:
@@ -295,6 +295,7 @@ SELECT * FROM type_JSON;
 
 --Testcase 57
 DELETE FROM type_JSON;
+-- drop column
 --Testcase 62:
 DROP FOREIGN TABLE IF EXISTS "type_BOOLEAN";
 --Testcase 63:
@@ -509,50 +510,9 @@ SELECT * FROM "type_DOUBLE"; -- OK
 
 --Testcase 107:
 ALTER FOREIGN TABLE "type_DOUBLE" ALTER COLUMN col TYPE float8;
---Testcase 108:
-INSERT INTO "type_DOUBLE" VALUES (PI());
---Testcase 109: ERR primary key
-INSERT INTO "type_DOUBLE" VALUES (PI());
-ERROR:  Failed to execute remote SQL
-HINT:  SQLite error 'UNIQUE constraint failed: type_DOUBLE.col', SQLite result code 19
-CONTEXT:  SQL query: INSERT INTO main."type_DOUBLE"(`col`) VALUES (?)
---Testcase 110:
-INSERT INTO "type_DOUBLE" VALUES ('Infinity');
---Testcase 111:
-INSERT INTO "type_DOUBLE" VALUES ('-Infinity');
---Testcase 113:
-SELECT * FROM "type_DOUBLE"; -- OK, +- Inf
-        col        
--------------------
-          1999.012
- 3.141592653589793
-          Infinity
-         -Infinity
-(4 rows)
-
---Testcase 114: ERR primary key
-INSERT INTO "type_DOUBLE" VALUES ('Infinity');
-ERROR:  Failed to execute remote SQL
-HINT:  SQLite error 'UNIQUE constraint failed: type_DOUBLE.col', SQLite result code 19
-CONTEXT:  SQL query: INSERT INTO main."type_DOUBLE"(`col`) VALUES (?)
---Testcase 115: ERR primary key
-INSERT INTO "type_DOUBLE" VALUES ('-Infinity');
-ERROR:  Failed to execute remote SQL
-HINT:  SQLite error 'UNIQUE constraint failed: type_DOUBLE.col', SQLite result code 19
-CONTEXT:  SQL query: INSERT INTO main."type_DOUBLE"(`col`) VALUES (?)
---Testcase 116:
-SELECT * FROM "type_DOUBLE"; -- OK, +- Inf
-        col        
--------------------
-          1999.012
- 3.141592653589793
-          Infinity
-         -Infinity
-(4 rows)
-
 --Testcase 47:
 DROP EXTENSION sqlite_fdw CASCADE;
-NOTICE:  drop cascades to 50 other objects
+NOTICE:  drop cascades to 48 other objects
 DETAIL:  drop cascades to server sqlite_svr
 drop cascades to foreign table department
 drop cascades to foreign table employee
@@ -582,8 +542,6 @@ drop cascades to foreign table "type_BIT"
 drop cascades to foreign table "type_VARBIT"
 drop cascades to foreign table "type_UUIDpk"
 drop cascades to foreign table "type_UUID"
-drop cascades to foreign table "type_MACADDRpk"
-drop cascades to foreign table "type_MACADDR"
 drop cascades to foreign table "BitT"
 drop cascades to foreign table notype
 drop cascades to foreign table typetest
