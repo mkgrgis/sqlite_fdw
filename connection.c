@@ -5,7 +5,7 @@
  * Portions Copyright (c) 2018, TOSHIBA CORPORATION
  *
  * IDENTIFICATION
- *        connection.c
+ *      connection.c
  *
  *-------------------------------------------------------------------------
  */
@@ -47,6 +47,8 @@ typedef struct ConnCacheEntry
 	List	   *stmtList;		/* list stmt associated with conn */
 	uint32		server_hashvalue;	/* hash value of foreign server OID */
 	uint32		mapping_hashvalue;	/* hash value of user mapping OID */
+	char		*journal_mode; /* journal_mode pragma value */
+	char		*synchronous;  /* synchronous mode for journal_mode pragma value */
 } ConnCacheEntry;
 
 /*
@@ -61,7 +63,7 @@ PG_FUNCTION_INFO_V1(sqlite_fdw_get_connections);
 PG_FUNCTION_INFO_V1(sqlite_fdw_disconnect);
 PG_FUNCTION_INFO_V1(sqlite_fdw_disconnect_all);
 
-static sqlite3 *sqlite_open_db(const char *dbpath, int flags);
+static sqlite3 *sqlite_open_db(const char *dbpath, ConnCacheEntry *entry);
 static void sqlite_make_new_connection(ConnCacheEntry *entry, ForeignServer *server);
 void		sqlite_do_sql_command(sqlite3 * conn, const char *sql, int level, List **busy_connection);
 static void sqlite_begin_remote_xact(ConnCacheEntry *entry);
@@ -85,6 +87,11 @@ typedef struct BusyHandlerArg
 	const char *sql;
 	int			level;
 } BusyHandlerArg;
+
+/* buffer size of pragma journal */
+#define PRAGMA_JOURNAL_BUFFER_SIZE 32
+/* buffer size of pragma synchronous */
+#define PRAGMA_SYNCHRONOUS_BUFFER_SIZE 32
 
 /*
  * sqlite_get_connection:
@@ -185,16 +192,40 @@ sqlite_get_connection(ForeignServer *server, bool truncatable)
 }
 
 /*
+ * callback function used to check the results of pragmas, where the first
+ * parameter points to the the expected result (to compare against the one returned by the DB)
+ */
+static int
+sqlitefdw_ck_pragma_callback(void *input, int count, char **data, char **columns)
+{
+	// both commands return only one value in one column
+	if (count != 1)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_FDW_ERROR),
+				 errmsg("Expecting one column"),
+				 errhint("received %d", count)));
+		return 1;
+	}
+	// compare expected vs obtained result
+	return strcmp(input, data[0]);
+}
+
+/*
  * Open remote sqlite database using specified database path
  * and flags of opened file descriptor mode.
  */
 static sqlite3 *
-sqlite_open_db(const char *dbpath, int flags)
+sqlite_open_db(const char *dbpath, ConnCacheEntry *entry)
 {
 	sqlite3	   *conn = NULL;
 	int			rc;
 	char	   *err;
 	const char *zVfs = NULL;
+	int flags = 0;
+
+	flags = flags | (entry->readonly ? SQLITE_OPEN_READONLY : SQLITE_OPEN_READWRITE);
+
 	rc = sqlite3_open_v2(dbpath, &conn, flags, zVfs);
 	if (rc != SQLITE_OK)
 		ereport(ERROR,
@@ -218,9 +249,86 @@ sqlite_open_db(const char *dbpath, int flags)
 	 * for using in data unifying during deparsing
 	 */
 	sqlite_fdw_data_norm_functs_init(conn);
+
+	if (entry->conn && entry->journal_mode != NULL)
+	{
+		/* manage pragma journal_mode option
+		*/
+		// note: overflows prevented by the check of values in option.c
+		char buffer[PRAGMA_JOURNAL_BUFFER_SIZE];
+		snprintf(buffer, PRAGMA_JOURNAL_BUFFER_SIZE, "pragma journal_mode=%s", entry->journal_mode);
+		// execute pragma command and check the result
+		rc = sqlite3_exec(entry->conn, buffer, sqlitefdw_ck_pragma_callback,
+						entry->journal_mode, &err);
+		if (rc != SQLITE_OK)
+		{
+			char	   *perr = pstrdup(err);
+
+			sqlite3_free(err);
+			sqlite3_close(entry->conn);
+			entry->conn = NULL;
+			ereport(ERROR,
+					(errcode(ERRCODE_FDW_ERROR),
+					 errmsg("failed to issue pragma journal_mode"),
+					 errhint("SQLite error %s",  perr)));
+		}
+	}
+
+	if (entry->conn && entry->synchronous != NULL)
+	{
+		/* manage pragma synchronous option
+		*/
+		// note: overflows prevented by the check of values in option.c
+		char buffer[PRAGMA_SYNCHRONOUS_BUFFER_SIZE];
+		char *SQL_CHECK_SYNCHRONOUS = "pragma synchronous";
+		char *ret_value = NULL;
+		char *RET_OFF = "0";
+		char *RET_NORMAL = "1";
+		char *RET_FULL = "2";
+		char *RET_EXTRA = "3";
+
+		snprintf(buffer, PRAGMA_SYNCHRONOUS_BUFFER_SIZE, "pragma synchronous=%s", entry->synchronous);
+		if (strcmp(entry->synchronous, "off") == 0)
+			ret_value = RET_OFF;
+		else if (strcmp(entry->synchronous, "normal") == 0)
+			ret_value = RET_NORMAL;
+		else if (strcmp(entry->synchronous, "full") == 0)
+			ret_value = RET_FULL;
+		else if (strcmp(entry->synchronous, "extra") == 0)
+			ret_value = RET_EXTRA;
+
+		// execute pragma command for synchronous
+		rc = sqlite3_exec(entry->conn, buffer, NULL, NULL, &err);
+		if (rc != SQLITE_OK)
+		{
+			char	   *perr = pstrdup(err);
+
+			sqlite3_free(err);
+			sqlite3_close(entry->conn);
+			entry->conn = NULL;
+			ereport(ERROR,
+					(errcode(ERRCODE_FDW_ERROR),
+					 errmsg("failed to issue pragma synchronous"),
+					 errhint("SQLite error %s",  perr)));
+		}
+
+		// execute check for the previous command
+		rc = sqlite3_exec(entry->conn, SQL_CHECK_SYNCHRONOUS, sqlitefdw_ck_pragma_callback, ret_value, &err);
+		if (rc != SQLITE_OK)
+		{
+			char	   *perr = pstrdup(err);
+
+			sqlite3_free(err);
+			sqlite3_close(entry->conn);
+			entry->conn = NULL;
+			ereport(ERROR,
+					(errcode(ERRCODE_FDW_ERROR),
+					 errmsg("failed to verify pragma synchronous"),
+					 errhint("SQLite error %s",  perr)));
+		}
+	}
 	return conn;
 }
-
 
 /*
  * Reset all transient state fields in the cached connection entry and
@@ -231,7 +339,6 @@ sqlite_make_new_connection(ConnCacheEntry *entry, ForeignServer *server)
 {
 	const char *dbpath = NULL;
 	ListCell   *lc;
-	int flags = 0;
 
 	Assert(entry->conn == NULL);
 
@@ -241,6 +348,8 @@ sqlite_make_new_connection(ConnCacheEntry *entry, ForeignServer *server)
 	entry->stmtList = NULL;
 	entry->keep_connections = true;
 	entry->readonly = false;
+	entry->journal_mode = NULL;
+	entry->synchronous = NULL;
 	entry->server_hashvalue =
 		GetSysCacheHashValue1(FOREIGNSERVEROID,
 							  ObjectIdGetDatum(server->serverid));
@@ -252,13 +361,15 @@ sqlite_make_new_connection(ConnCacheEntry *entry, ForeignServer *server)
 			dbpath = defGetString(def);
 		else if (strcmp(def->defname, "keep_connections") == 0)
 			entry->keep_connections = defGetBoolean(def);
+		else if (strcmp(def->defname, "journal_mode") == 0)
+			entry->journal_mode = defGetString(def);
+		else if (strcmp(def->defname, "synchronous") == 0)
+			entry->synchronous = defGetString(def);
 		else if (strcmp(def->defname, "force_readonly") == 0)
 			entry->readonly = defGetBoolean(def);
 	}
-
-	flags = flags | (entry->readonly ? SQLITE_OPEN_READONLY : SQLITE_OPEN_READWRITE);
 	/* Try to make the connection */
-	entry->conn = sqlite_open_db(dbpath, flags);
+	entry->conn = sqlite_open_db(dbpath, entry);
 }
 
 /*
