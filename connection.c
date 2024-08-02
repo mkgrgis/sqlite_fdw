@@ -42,6 +42,7 @@ typedef struct ConnCacheEntry
 									 * server option */
 	bool		truncatable;	/* check table can truncate or not */
 	bool		readonly;		/* option force_readonly, readonly SQLite file mode */
+	bool		integrity_check;/* true for integrity check before passing a new connection to other operations */
 	bool		invalidated;	/* true if reconnect is pending */
 	Oid			serverid;		/* foreign server OID used to get server name */
 	List	   *stmtList;		/* list stmt associated with conn */
@@ -61,7 +62,7 @@ PG_FUNCTION_INFO_V1(sqlite_fdw_get_connections);
 PG_FUNCTION_INFO_V1(sqlite_fdw_disconnect);
 PG_FUNCTION_INFO_V1(sqlite_fdw_disconnect_all);
 
-static sqlite3 *sqlite_open_db(const char *dbpath, int flags);
+static sqlite3 *sqlite_open_db(const char *dbpath, int flags, bool integrity_check);
 static void sqlite_make_new_connection(ConnCacheEntry *entry, ForeignServer *server);
 void		sqlite_do_sql_command(sqlite3 * conn, const char *sql, int level, List **busy_connection);
 static void sqlite_begin_remote_xact(ConnCacheEntry *entry);
@@ -189,17 +190,47 @@ sqlite_get_connection(ForeignServer *server, bool truncatable)
  * and flags of opened file descriptor mode.
  */
 static sqlite3 *
-sqlite_open_db(const char *dbpath, int flags)
+sqlite_open_db(const char *dbpath, int flags, bool integrity_check)
 {
 	sqlite3	   *conn = NULL;
 	int			rc;
 	char	   *err;
 	const char *zVfs = NULL;
+	sqlite3_stmt   *volatile pragma_stmt = NULL;
+
 	rc = sqlite3_open_v2(dbpath, &conn, flags, zVfs);
 	if (rc != SQLITE_OK)
 		ereport(ERROR,
 				(errcode(ERRCODE_FDW_UNABLE_TO_ESTABLISH_CONNECTION),
 				 errmsg("Failed to open SQLite DB, file '%s', result code %d", dbpath, rc)));
+
+	sqlite_prepare_wrapper(server, conn, "PRAGMA database_list;", (sqlite3_stmt * *) & pragma_stmt, NULL, false);
+	for (;;)
+	{
+		rc = sqlite3_step(pragma_stmt);
+		if (rc == SQLITE_DONE)
+			break;
+		else if (rc != SQLITE_ROW)
+		{
+			/* Not pass sql_stmt because it is finalized in PG_CATCH */
+			sqlitefdw_report_error(ERROR, NULL, conn, sqlite3_sql(pragma_stmt), rc);
+		}
+		else
+		{
+			char * ok = sqlite3_column_text(pragma_stmt, 0);
+			if (strcmp(ok, "ok") != 0)
+			{
+				sqlite3_finalize(pragma_stmt);
+				sqlite3_close(conn);
+				conn = NULL;
+				ereport(ERROR,
+						(errcode(ERRCODE_FDW_UNABLE_TO_ESTABLISH_CONNECTION),
+						 errmsg("Integrity check failed to for SQLite DB, file '%s': %s", dbpath, ok)));
+				}			
+		}
+	}
+	sqlite3_finalize(pragma_stmt);
+	
 	/* make 'LIKE' of SQLite case sensitive like PostgreSQL */
 	rc = sqlite3_exec(conn, "pragma case_sensitive_like=1",
 					  NULL, NULL, &err);
@@ -241,6 +272,7 @@ sqlite_make_new_connection(ConnCacheEntry *entry, ForeignServer *server)
 	entry->stmtList = NULL;
 	entry->keep_connections = true;
 	entry->readonly = false;
+	entry->integrity_check = true;
 	entry->server_hashvalue =
 		GetSysCacheHashValue1(FOREIGNSERVEROID,
 							  ObjectIdGetDatum(server->serverid));
@@ -254,11 +286,13 @@ sqlite_make_new_connection(ConnCacheEntry *entry, ForeignServer *server)
 			entry->keep_connections = defGetBoolean(def);
 		else if (strcmp(def->defname, "force_readonly") == 0)
 			entry->readonly = defGetBoolean(def);
+		else if (strcmp(def->defname, "integrity_check") == 0)
+			entry->integrity_check = defGetBoolean(def);			
 	}
 
 	flags = flags | (entry->readonly ? SQLITE_OPEN_READONLY : SQLITE_OPEN_READWRITE);
 	/* Try to make the connection */
-	entry->conn = sqlite_open_db(dbpath, flags);
+	entry->conn = sqlite_open_db(dbpath, flags, entry->integrity_check);
 }
 
 /*
