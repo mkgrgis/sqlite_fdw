@@ -158,9 +158,9 @@ one_string_value (sqlite3* db, char* query){
 				ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("\"%s\" returns not a text, but %s (%d bytes). Please check your SQLite configuration",
-					 		query, sqlite_datatype(vt), vb)
-					)
-				);
+					 		query,
+					 		sqlite_datatype(vt),
+					 		vb)));
 			}
 			else
 			{
@@ -207,9 +207,9 @@ one_integer_value (sqlite3* db, char* query){
 				ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("\"%s\" returns not integer, but %s (%d bytes). Please check your SQLite configuration",
-					 		query, sqlite_datatype(vt), vb)
-					)
-				);
+					 		query,
+					 		sqlite_datatype(vt),
+					 		vb)));
 			}
 			else
 			{
@@ -596,7 +596,6 @@ sqlite_do_sql_command(sqlite3 * conn, const char *sql, int level, List **busy_co
 						 errmsg("SQLite failed to execute a query"),
 						 errcontext("SQL query: %s", sql),
 						 errhint("SQLite error '%s'", perr)));
-
 				pfree(perr);
 			}
 		}
@@ -629,7 +628,6 @@ sqlite_begin_remote_xact(ConnCacheEntry *entry)
 
 		sqlite_do_sql_command(entry->conn, sql, ERROR, NULL);
 		entry->xact_depth = 1;
-
 	}
 
 	/*
@@ -671,8 +669,7 @@ sqlitefdw_report_error(int elevel, sqlite3_stmt * stmt, sqlite3 * conn,
 			(errcode(sqlstate),
 			 errmsg("Failed to execute remote SQL"),
 			 errcontext("SQL query: %s", sql ? sql : ""),
-			 errhint("SQLite error '%s', SQLite result code %d", message ? message : "", rc)
-			));
+			 errhint("SQLite error '%s', SQLite result code %d", message ? message : "", rc)));
 }
 
 /* XACT GROUP */
