@@ -258,7 +258,7 @@ sqlite_fdw_data_norm_bool(sqlite3_context* context, int argc, sqlite3_value** ar
 		return;
 	}
 	l = sqlite3_value_bytes(arg);
-	if (l > 5)
+	if (l > 5) /* false - the longest text value for bool */
 	{
 		sqlite3_result_value(context, arg);
 		return;
@@ -339,31 +339,28 @@ sqlite_fdw_data_norm_bool(sqlite3_context* context, int argc, sqlite3_value** ar
 	sqlite3_result_value(context, arg);
 }
 
-/* Base ∞ constants */
-static const char * infs = "Inf";
-static const char * infl = "Infinity";
-
 /*
  * Try to check SQLite value if there is any ∞ value with text affinity
  */
 static bool
 infinity_processing (double* d, const char* t)
 {
-	static const char * minfs = "-Inf";
-	static const char * minfl = "-Infinity";
-	static const char * pinfs = "+Inf";
-	static const char * pinfl = "+Infinity";
 
-	if (strcasecmp(t, infs) == 0 ||
-		strcasecmp(t, pinfs) == 0 ||
-		strcasecmp(t, infl) == 0 ||
-		strcasecmp(t, pinfl) == 0)
+	if (strcasecmp(t, CHAR_INF_SHORT) == 0 ||
+		strcasecmp(t, CHAR_INF_LONG) == 0 ||
+		(t[0] == '+' &&
+		   (strcasecmp(t + sizeof(char), CHAR_INF_SHORT) == 0 ||
+			strcasecmp(t + sizeof(char), CHAR_INF_LONG) == 0)
+		)
+	   )
 	{
 		*d = INFINITY;
 		return true;
 	}
-	if (strcasecmp(t, minfs) == 0 ||
-		strcasecmp(t, minfl) == 0)
+	if (t[0] == '-' &&
+		   (strcasecmp(t + sizeof(char), CHAR_INF_SHORT) == 0 ||
+			strcasecmp(t + sizeof(char), CHAR_INF_LONG) == 0)
+	   )
 	{
 		*d = -INFINITY;
 		return true;
@@ -400,7 +397,7 @@ sqlite_fdw_data_norm_float(sqlite3_context* context, int argc, sqlite3_value** a
 	}
 
 	l = sqlite3_value_bytes(arg);
-	if (l > strlen(infl) + 2 || l < strlen(infs))
+	if (l > strlen(CHAR_INF_LONG) + 2 || l < strlen(CHAR_INF_SHORT))
 	{
 		sqlite3_result_value(context, arg);
 		return;

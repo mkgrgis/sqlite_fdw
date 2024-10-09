@@ -1,0 +1,1103 @@
+--
+-- Schema usage, database attach test
+--
+--Testcase 01:
+CREATE EXTENSION sqlite_fdw;
+--Testcase 02:
+CREATE SERVER sqlite_svr FOREIGN DATA WRAPPER sqlite_fdw
+OPTIONS (database '/tmp/sqlite_fdw_test/core.db');
+--Testcase 03:
+CREATE FOREIGN TABLE aggtest (
+  a       int2,
+  b     float4
+) SERVER sqlite_svr;
+--Testcase 04:
+CREATE FOREIGN TABLE student (
+  name    text,
+  age     int4,
+  location  point,
+  gpa     float8
+) SERVER sqlite_svr;
+--Testcase 05:
+SELECT * FROM sqlite_fdw_db_list('sqlite_svr');
+ sqlite_id | alias |             file             | readonly | txn  
+-----------+-------+------------------------------+----------+------
+         0 | main  | /tmp/sqlite_fdw_test/core.db | f        | none
+(1 row)
+
+--Testcase 06:
+SELECT sqlite_fdw_db_attach('sqlite_svr', '/tmp/sqlite_fdw_test/common.db', 'cdb');
+ sqlite_fdw_db_attach 
+----------------------
+                    2
+(1 row)
+
+--Testcase 07:
+SELECT * FROM sqlite_fdw_db_list('sqlite_svr');
+ sqlite_id | alias |              file              | readonly | txn  
+-----------+-------+--------------------------------+----------+------
+         0 | main  | /tmp/sqlite_fdw_test/core.db   | f        | none
+         2 | cdb   | /tmp/sqlite_fdw_test/common.db | f        | none
+(2 rows)
+
+--Testcase 08: -- ERR
+SELECT sqlite_fdw_db_attach('sqlite_svr_non_exist', '/tmp/sqlite_fdw_test/common.db', 'scdb');
+ERROR:  server "sqlite_svr_non_exist" does not exist
+--Testcase 09: -- ERR
+SELECT * FROM sqlite_fdw_db_list('sqlite_svr_non_exist');
+ERROR:  server "sqlite_svr_non_exist" does not exist
+--Testcase 10:
+SELECT sqlite_fdw_db_attach('sqlite_svr', '/tmp/sqlite_fdw_test/non_exist.db', 'ndb');
+ERROR:  Failed to attach SQLite DB, file '/tmp/sqlite_fdw_test/non_exist.db', SQLite error 'unable to open database: /tmp/sqlite_fdw_test/non_exist.db', result code 14
+--Testcase 11:
+SELECT * FROM sqlite_fdw_db_list('sqlite_svr');
+ sqlite_id | alias |              file              | readonly | txn  
+-----------+-------+--------------------------------+----------+------
+         0 | main  | /tmp/sqlite_fdw_test/core.db   | f        | none
+         2 | cdb   | /tmp/sqlite_fdw_test/common.db | f        | none
+(2 rows)
+
+--Testcase 12:
+CREATE FOREIGN TABLE "Unicode data"(i text OPTIONS (key 'true'), t text) SERVER sqlite_svr OPTIONS (schema_name 'cdb');
+--Testcase 13:
+SELECT * FROM "Unicode data";
+  i  |                                                           t                                                            
+-----+------------------------------------------------------------------------------------------------------------------------
+ jap | いろはにほへと ちりぬるを わかよたれそ つねならむ うゐのおくやま けふこえて あさきゆめみし ゑひもせす.
+ bul | Ах, чудна българска земьо, полюшвай цъфтящи жита.
+ rus | Широкая электрификация южных губерний даст мощный толчок подъёму сельского хозяйства.
+ aze | Zəfər, jaketini də, papağını da götür, bu axşam hava çox soyuq olacaq.
+ arm | Բել դղյակի ձախ ժամն օֆ ազգությանը ցպահանջ չճշտած վնաս էր եւ փառք։
+ ukr | Гей, хлопці, не вспію — на ґанку ваша файна їжа знищується бурундучком.
+ eus | Permin gox dabiltzu yoskiñ.
+ bel | У рудога вераб’я ў сховішчы пад фатэлем ляжаць нейкія гаючыя зёлкі.
+ gre | Τάχιστη αλώπηξ βαφής ψημένη γη, δρασκελίζει υπέρ νωθρού κυνός
+ gle | Chuaigh bé mhórshách le dlúthspád fíorfhinn trí hata mo dhea-phorcáin bhig.
+ spa | Quiere la boca exhausta vid, kiwi, piña y fugaz jamón.
+ kor | 키스의 고유조건은 입술끼리 만나야 하고 특별한 기술은 필요치 않다.
+ lav | Ķieģeļu cepējs Edgars Buls fraku un hūti žāvē uz čīkstošām eņģēm.
+ pol | Pchnąć w tę łódź jeża lub ośm skrzyń fig.
+ fra | Dès Noël où un zéphyr haï me vêt de glaçons würmiens je dîne d’exquis rôtis de bœuf au kir à l’aÿ d’âge mûr & cætera !
+ srp | Ljubavi, Olga, hajde pođi u Fudži i čut ćeš nježnu muziku srca.
+ epo | Laŭ Ludoviko Zamenhof bongustas freŝa ĉeĥa manĝaĵo kun spicoj.
+ cze | Zvlášť zákeřný učeň s ďolíčky běží podél zóny úlů.
+ ara | أبجد هوَّز حُطّي كلَمُن سَعْفَص قُرِشَت ثَخَدٌ ضَظَغ
+ heb | עטלף אבק נס דרך מזגן שהתפוצץ כי חם
+(20 rows)
+
+--Testcase 14:
+SELECT sqlite_fdw_db_detach('sqlite_svr', 'cdb');
+ sqlite_fdw_db_detach 
+----------------------
+ 
+(1 row)
+
+--Testcase 15: -- ERR
+SELECT * FROM "Unicode data";
+ERROR:  SQL error during prepare: no such table: cdb.Unicode data
+CONTEXT:  SELECT `i`, `t` FROM cdb."Unicode data"
+--Testcase 16: -- ERR
+SELECT sqlite_fdw_db_detach('sqlite_svr_non_exist', 'scdb');
+ERROR:  server "sqlite_svr_non_exist" does not exist
+--Testcase 17: -- ERR
+SELECT sqlite_fdw_db_detach('sqlite_svr', 'ndb');
+ERROR:  Failed to detach SQLite DB ndb, SQLite error 'no such database: ndb', result code 1
+--Testcase 18:
+SELECT * FROM sqlite_fdw_db_list('sqlite_svr');
+ sqlite_id | alias |             file             | readonly | txn  
+-----------+-------+------------------------------+----------+------
+         0 | main  | /tmp/sqlite_fdw_test/core.db | f        | none
+(1 row)
+
+--Testcase 19:
+SELECT sqlite_fdw_db_attach('sqlite_svr', '/tmp/sqlite_fdw_test/common.db', 'cm');
+ sqlite_fdw_db_attach 
+----------------------
+                    2
+(1 row)
+
+--Testcase 20:
+SELECT * FROM sqlite_fdw_db_list('sqlite_svr');
+ sqlite_id | alias |              file              | readonly | txn  
+-----------+-------+--------------------------------+----------+------
+         0 | main  | /tmp/sqlite_fdw_test/core.db   | f        | none
+         2 | cm    | /tmp/sqlite_fdw_test/common.db | f        | none
+(2 rows)
+
+--Testcase 21:
+CREATE SCHEMA import1;
+--Testcase 22:
+IMPORT FOREIGN SCHEMA main FROM SERVER sqlite_svr INTO import1;
+--Testcase 23:
+\det+ import1.*
+                                                   List of foreign tables
+ Schema  |                Table                |   Server   |                   FDW options                   | Description 
+---------+-------------------------------------+------------+-------------------------------------------------+-------------
+ import1 | FLOAT4_TBL                          | sqlite_svr | ("table" 'FLOAT4_TBL')                          | 
+ import1 | FLOAT4_TMP                          | sqlite_svr | ("table" 'FLOAT4_TMP')                          | 
+ import1 | FLOAT8_TBL                          | sqlite_svr | ("table" 'FLOAT8_TBL')                          | 
+ import1 | FLOAT8_TMP                          | sqlite_svr | ("table" 'FLOAT8_TMP')                          | 
+ import1 | INT2_TBL                            | sqlite_svr | ("table" 'INT2_TBL')                            | 
+ import1 | INT2_TMP                            | sqlite_svr | ("table" 'INT2_TMP')                            | 
+ import1 | INT4_TBL                            | sqlite_svr | ("table" 'INT4_TBL')                            | 
+ import1 | INT4_TMP                            | sqlite_svr | ("table" 'INT4_TMP')                            | 
+ import1 | INT8_TBL                            | sqlite_svr | ("table" 'INT8_TBL')                            | 
+ import1 | INT8_TMP                            | sqlite_svr | ("table" 'INT8_TMP')                            | 
+ import1 | J1_TBL                              | sqlite_svr | ("table" 'J1_TBL')                              | 
+ import1 | J2_TBL                              | sqlite_svr | ("table" 'J2_TBL')                              | 
+ import1 | NON_ERROR_THROWING_API_FLOAT4       | sqlite_svr | ("table" 'NON_ERROR_THROWING_API_FLOAT4')       | 
+ import1 | NON_ERROR_THROWING_API_FLOAT8       | sqlite_svr | ("table" 'NON_ERROR_THROWING_API_FLOAT8')       | 
+ import1 | NON_ERROR_THROWING_API_INT4         | sqlite_svr | ("table" 'NON_ERROR_THROWING_API_INT4')         | 
+ import1 | NON_ERROR_THROWING_API_INT4_NUMERIC | sqlite_svr | ("table" 'NON_ERROR_THROWING_API_INT4_NUMERIC') | 
+ import1 | NON_ERROR_THROWING_API_INT8         | sqlite_svr | ("table" 'NON_ERROR_THROWING_API_INT8')         | 
+ import1 | TEXT_TBL                            | sqlite_svr | ("table" 'TEXT_TBL')                            | 
+ import1 | VARCHAR_TBL                         | sqlite_svr | ("table" 'VARCHAR_TBL')                         | 
+ import1 | a1                                  | sqlite_svr | ("table" 'a1')                                  | 
+ import1 | a2                                  | sqlite_svr | ("table" 'a2')                                  | 
+ import1 | a3                                  | sqlite_svr | ("table" 'a3')                                  | 
+ import1 | a4                                  | sqlite_svr | ("table" 'a4')                                  | 
+ import1 | agg_data_20k                        | sqlite_svr | ("table" 'agg_data_20k')                        | 
+ import1 | agg_data_2k                         | sqlite_svr | ("table" 'agg_data_2k')                         | 
+ import1 | agg_group_1                         | sqlite_svr | ("table" 'agg_group_1')                         | 
+ import1 | agg_group_2                         | sqlite_svr | ("table" 'agg_group_2')                         | 
+ import1 | agg_group_3                         | sqlite_svr | ("table" 'agg_group_3')                         | 
+ import1 | agg_group_4                         | sqlite_svr | ("table" 'agg_group_4')                         | 
+ import1 | agg_hash_1                          | sqlite_svr | ("table" 'agg_hash_1')                          | 
+ import1 | agg_hash_2                          | sqlite_svr | ("table" 'agg_hash_2')                          | 
+ import1 | agg_hash_3                          | sqlite_svr | ("table" 'agg_hash_3')                          | 
+ import1 | agg_hash_4                          | sqlite_svr | ("table" 'agg_hash_4')                          | 
+ import1 | agg_t1                              | sqlite_svr | ("table" 'agg_t1')                              | 
+ import1 | agg_t10                             | sqlite_svr | ("table" 'agg_t10')                             | 
+ import1 | agg_t11                             | sqlite_svr | ("table" 'agg_t11')                             | 
+ import1 | agg_t12                             | sqlite_svr | ("table" 'agg_t12')                             | 
+ import1 | agg_t13                             | sqlite_svr | ("table" 'agg_t13')                             | 
+ import1 | agg_t14                             | sqlite_svr | ("table" 'agg_t14')                             | 
+ import1 | agg_t15                             | sqlite_svr | ("table" 'agg_t15')                             | 
+ import1 | agg_t16                             | sqlite_svr | ("table" 'agg_t16')                             | 
+ import1 | agg_t17                             | sqlite_svr | ("table" 'agg_t17')                             | 
+ import1 | agg_t170                            | sqlite_svr | ("table" 'agg_t170')                            | 
+ import1 | agg_t18                             | sqlite_svr | ("table" 'agg_t18')                             | 
+ import1 | agg_t19                             | sqlite_svr | ("table" 'agg_t19')                             | 
+ import1 | agg_t2                              | sqlite_svr | ("table" 'agg_t2')                              | 
+ import1 | agg_t20                             | sqlite_svr | ("table" 'agg_t20')                             | 
+ import1 | agg_t21                             | sqlite_svr | ("table" 'agg_t21')                             | 
+ import1 | agg_t3                              | sqlite_svr | ("table" 'agg_t3')                              | 
+ import1 | agg_t4                              | sqlite_svr | ("table" 'agg_t4')                              | 
+ import1 | agg_t5                              | sqlite_svr | ("table" 'agg_t5')                              | 
+ import1 | agg_t6                              | sqlite_svr | ("table" 'agg_t6')                              | 
+ import1 | agg_t7                              | sqlite_svr | ("table" 'agg_t7')                              | 
+ import1 | agg_t8                              | sqlite_svr | ("table" 'agg_t8')                              | 
+ import1 | agg_t9                              | sqlite_svr | ("table" 'agg_t9')                              | 
+ import1 | agg_tb                              | sqlite_svr | ("table" 'agg_tb')                              | 
+ import1 | agg_tb2                             | sqlite_svr | ("table" 'agg_tb2')                             | 
+ import1 | aggtest                             | sqlite_svr | ("table" 'aggtest')                             | 
+ import1 | b1                                  | sqlite_svr | ("table" 'b1')                                  | 
+ import1 | b2                                  | sqlite_svr | ("table" 'b2')                                  | 
+ import1 | b3                                  | sqlite_svr | ("table" 'b3')                                  | 
+ import1 | b4                                  | sqlite_svr | ("table" 'b4')                                  | 
+ import1 | bitwise_test                        | sqlite_svr | ("table" 'bitwise_test')                        | 
+ import1 | bool_test                           | sqlite_svr | ("table" 'bool_test')                           | 
+ import1 | bool_test_tmp                       | sqlite_svr | ("table" 'bool_test_tmp')                       | 
+ import1 | btg                                 | sqlite_svr | ("table" 'btg')                                 | 
+ import1 | bytea_test_table                    | sqlite_svr | ("table" 'bytea_test_table')                    | 
+ import1 | c2                                  | sqlite_svr | ("table" 'c2')                                  | 
+ import1 | c3                                  | sqlite_svr | ("table" 'c3')                                  | 
+ import1 | ceil_floor_round                    | sqlite_svr | ("table" 'ceil_floor_round')                    | 
+ import1 | ceil_round_float8                   | sqlite_svr | ("table" 'ceil_round_float8')                   | 
+ import1 | child                               | sqlite_svr | ("table" 'child')                               | 
+ import1 | d3                                  | sqlite_svr | ("table" 'd3')                                  | 
+ import1 | dates                               | sqlite_svr | ("table" 'dates')                               | 
+ import1 | fkest                               | sqlite_svr | ("table" 'fkest')                               | 
+ import1 | fkest1                              | sqlite_svr | ("table" 'fkest1')                              | 
+ import1 | float_tb                            | sqlite_svr | ("table" 'float_tb')                            | 
+ import1 | foo                                 | sqlite_svr | ("table" 'foo')                                 | 
+ import1 | fract_only                          | sqlite_svr | ("table" 'fract_only')                          | 
+ import1 | innertab                            | sqlite_svr | ("table" 'innertab')                            | 
+ import1 | inserttest01                        | sqlite_svr | ("table" 'inserttest01')                        | 
+ import1 | j11                                 | sqlite_svr | ("table" 'j11')                                 | 
+ import1 | j12                                 | sqlite_svr | ("table" 'j12')                                 | 
+ import1 | j21                                 | sqlite_svr | ("table" 'j21')                                 | 
+ import1 | j22                                 | sqlite_svr | ("table" 'j22')                                 | 
+ import1 | j31                                 | sqlite_svr | ("table" 'j31')                                 | 
+ import1 | j32                                 | sqlite_svr | ("table" 'j32')                                 | 
+ import1 | join_pt1                            | sqlite_svr | ("table" 'join_pt1')                            | 
+ import1 | minmaxtest                          | sqlite_svr | ("table" 'minmaxtest')                          | 
+ import1 | multi_arg_agg                       | sqlite_svr | ("table" 'multi_arg_agg')                       | 
+ import1 | nt1                                 | sqlite_svr | ("table" 'nt1')                                 | 
+ import1 | nt2                                 | sqlite_svr | ("table" 'nt2')                                 | 
+ import1 | nt3                                 | sqlite_svr | ("table" 'nt3')                                 | 
+ import1 | num_data                            | sqlite_svr | ("table" 'num_data')                            | 
+ import1 | num_exp_add                         | sqlite_svr | ("table" 'num_exp_add')                         | 
+ import1 | num_exp_div                         | sqlite_svr | ("table" 'num_exp_div')                         | 
+ import1 | num_exp_ln                          | sqlite_svr | ("table" 'num_exp_ln')                          | 
+ import1 | num_exp_log10                       | sqlite_svr | ("table" 'num_exp_log10')                       | 
+ import1 | num_exp_mul                         | sqlite_svr | ("table" 'num_exp_mul')                         | 
+ import1 | num_exp_power_10_ln                 | sqlite_svr | ("table" 'num_exp_power_10_ln')                 | 
+ import1 | num_exp_sqrt                        | sqlite_svr | ("table" 'num_exp_sqrt')                        | 
+ import1 | num_exp_sub                         | sqlite_svr | ("table" 'num_exp_sub')                         | 
+ import1 | num_input_test                      | sqlite_svr | ("table" 'num_input_test')                      | 
+ import1 | num_result                          | sqlite_svr | ("table" 'num_result')                          | 
+ import1 | num_tmp                             | sqlite_svr | ("table" 'num_tmp')                             | 
+ import1 | num_trigger_test                    | sqlite_svr | ("table" 'num_trigger_test')                    | 
+ import1 | num_typemod_test                    | sqlite_svr | ("table" 'num_typemod_test')                    | 
+ import1 | num_variance                        | sqlite_svr | ("table" 'num_variance')                        | 
+ import1 | numeric_tmp                         | sqlite_svr | ("table" 'numeric_tmp')                         | 
+ import1 | onek                                | sqlite_svr | ("table" 'onek')                                | 
+ import1 | onek2                               | sqlite_svr | ("table" 'onek2')                               | 
+ import1 | pagg_test                           | sqlite_svr | ("table" 'pagg_test')                           | 
+ import1 | parent                              | sqlite_svr | ("table" 'parent')                              | 
+ import1 | person                              | sqlite_svr | ("table" 'person')                              | 
+ import1 | q1                                  | sqlite_svr | ("table" 'q1')                                  | 
+ import1 | q2                                  | sqlite_svr | ("table" 'q2')                                  | 
+ import1 | regr_test                           | sqlite_svr | ("table" 'regr_test')                           | 
+ import1 | road                                | sqlite_svr | ("table" 'road')                                | 
+ import1 | road_tmp                            | sqlite_svr | ("table" 'road_tmp')                            | 
+ import1 | special_case_int4                   | sqlite_svr | ("table" 'special_case_int4')                   | 
+ import1 | special_case_int8                   | sqlite_svr | ("table" 'special_case_int8')                   | 
+ import1 | student                             | sqlite_svr | ("table" 'student')                             | 
+ import1 | sub_tbl                             | sqlite_svr | ("table" 'sub_tbl')                             | 
+ import1 | t                                   | sqlite_svr | ("table" 't')                                   | 
+ import1 | t1                                  | sqlite_svr | ("table" 't1')                                  | 
+ import1 | t11                                 | sqlite_svr | ("table" 't11')                                 | 
+ import1 | t12                                 | sqlite_svr | ("table" 't12')                                 | 
+ import1 | t2                                  | sqlite_svr | ("table" 't2')                                  | 
+ import1 | t21                                 | sqlite_svr | ("table" 't21')                                 | 
+ import1 | t22                                 | sqlite_svr | ("table" 't22')                                 | 
+ import1 | t31                                 | sqlite_svr | ("table" 't31')                                 | 
+ import1 | t32                                 | sqlite_svr | ("table" 't32')                                 | 
+ import1 | tenk1                               | sqlite_svr | ("table" 'tenk1')                               | 
+ import1 | tenk2                               | sqlite_svr | ("table" 'tenk2')                               | 
+ import1 | test_having                         | sqlite_svr | ("table" 'test_having')                         | 
+ import1 | testdata                            | sqlite_svr | ("table" 'testdata')                            | 
+ import1 | to_number_tbl                       | sqlite_svr | ("table" 'to_number_tbl')                       | 
+ import1 | tt1                                 | sqlite_svr | ("table" 'tt1')                                 | 
+ import1 | tt2                                 | sqlite_svr | ("table" 'tt2')                                 | 
+ import1 | tt3                                 | sqlite_svr | ("table" 'tt3')                                 | 
+ import1 | tt4                                 | sqlite_svr | ("table" 'tt4')                                 | 
+ import1 | tt4x                                | sqlite_svr | ("table" 'tt4x')                                | 
+ import1 | tt5                                 | sqlite_svr | ("table" 'tt5')                                 | 
+ import1 | tt6                                 | sqlite_svr | ("table" 'tt6')                                 | 
+ import1 | type_FLOAT_INF                      | sqlite_svr | ("table" 'type_FLOAT_INF')                      | 
+ import1 | uniquetbl                           | sqlite_svr | ("table" 'uniquetbl')                           | 
+ import1 | update_test                         | sqlite_svr | ("table" 'update_test')                         | 
+ import1 | upsert_test                         | sqlite_svr | ("table" 'upsert_test')                         | 
+ import1 | v                                   | sqlite_svr | ("table" 'v')                                   | 
+ import1 | width_bucket_tbl                    | sqlite_svr | ("table" 'width_bucket_tbl')                    | 
+ import1 | width_bucket_test                   | sqlite_svr | ("table" 'width_bucket_test')                   | 
+ import1 | x                                   | sqlite_svr | ("table" 'x')                                   | 
+ import1 | xx                                  | sqlite_svr | ("table" 'xx')                                  | 
+ import1 | y                                   | sqlite_svr | ("table" 'y')                                   | 
+ import1 | yy                                  | sqlite_svr | ("table" 'yy')                                  | 
+ import1 | zt1                                 | sqlite_svr | ("table" 'zt1')                                 | 
+ import1 | zt2                                 | sqlite_svr | ("table" 'zt2')                                 | 
+ import1 | zt3                                 | sqlite_svr | ("table" 'zt3')                                 | 
+(158 rows)
+
+--Testcase 24:
+CREATE SCHEMA import2;
+--Testcase 25:
+SELECT * FROM sqlite_fdw_db_list('sqlite_svr');
+ sqlite_id | alias |             file             | readonly | txn  
+-----------+-------+------------------------------+----------+------
+         0 | main  | /tmp/sqlite_fdw_test/core.db | f        | none
+(1 row)
+
+--Testcase 26: -- fails, db was detached
+IMPORT FOREIGN SCHEMA cm FROM SERVER sqlite_svr INTO import2;
+ERROR:  SQL error during prepare: no such table: cm.sqlite_master
+CONTEXT:  SELECT name FROM cm.sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%%'
+--Testcase 27:
+SELECT sqlite_fdw_db_attach('sqlite_svr', '/tmp/sqlite_fdw_test/common.db', 'cm');
+ sqlite_fdw_db_attach 
+----------------------
+                    2
+(1 row)
+
+--Testcase 28:
+SELECT * FROM sqlite_fdw_db_list('sqlite_svr');
+ sqlite_id | alias |              file              | readonly | txn  
+-----------+-------+--------------------------------+----------+------
+         0 | main  | /tmp/sqlite_fdw_test/core.db   | f        | none
+         2 | cm    | /tmp/sqlite_fdw_test/common.db | f        | none
+(2 rows)
+
+--Testcase 29:
+IMPORT FOREIGN SCHEMA cm FROM SERVER sqlite_svr INTO import2;
+--Testcase 30:
+SELECT * FROM sqlite_fdw_db_list('sqlite_svr');
+ sqlite_id | alias |              file              | readonly | txn  
+-----------+-------+--------------------------------+----------+------
+         0 | main  | /tmp/sqlite_fdw_test/core.db   | f        | none
+         2 | cm    | /tmp/sqlite_fdw_test/common.db | f        | none
+(2 rows)
+
+--Testcase 31:
+\det+ import2.*
+                                          List of foreign tables
+ Schema  |       Table       |   Server   |                   FDW options                   | Description 
+---------+-------------------+------------+-------------------------------------------------+-------------
+ import2 | A a               | sqlite_svr | ("table" 'A a', schema_name 'cm')               | 
+ import2 | BitT              | sqlite_svr | ("table" 'BitT', schema_name 'cm')              | 
+ import2 | RO_RW_test        | sqlite_svr | ("table" 'RO_RW_test', schema_name 'cm')        | 
+ import2 | Unicode data      | sqlite_svr | ("table" 'Unicode data', schema_name 'cm')      | 
+ import2 | alltypetest       | sqlite_svr | ("table" 'alltypetest', schema_name 'cm')       | 
+ import2 | case_exp          | sqlite_svr | ("table" 'case_exp', schema_name 'cm')          | 
+ import2 | columntest        | sqlite_svr | ("table" 'columntest', schema_name 'cm')        | 
+ import2 | department        | sqlite_svr | ("table" 'department', schema_name 'cm')        | 
+ import2 | empdata           | sqlite_svr | ("table" 'empdata', schema_name 'cm')           | 
+ import2 | employee          | sqlite_svr | ("table" 'employee', schema_name 'cm')          | 
+ import2 | fk_d_track        | sqlite_svr | ("table" 'fk_d_track', schema_name 'cm')        | 
+ import2 | fk_s_artist       | sqlite_svr | ("table" 'fk_s_artist', schema_name 'cm')       | 
+ import2 | fts_table         | sqlite_svr | ("table" 'fts_table', schema_name 'cm')         | 
+ import2 | fts_table_config  | sqlite_svr | ("table" 'fts_table_config', schema_name 'cm')  | 
+ import2 | fts_table_content | sqlite_svr | ("table" 'fts_table_content', schema_name 'cm') | 
+ import2 | fts_table_data    | sqlite_svr | ("table" 'fts_table_data', schema_name 'cm')    | 
+ import2 | fts_table_docsize | sqlite_svr | ("table" 'fts_table_docsize', schema_name 'cm') | 
+ import2 | fts_table_idx     | sqlite_svr | ("table" 'fts_table_idx', schema_name 'cm')     | 
+ import2 | grem1_1           | sqlite_svr | ("table" 'grem1_1', schema_name 'cm')           | 
+ import2 | grem1_2           | sqlite_svr | ("table" 'grem1_2', schema_name 'cm')           | 
+ import2 | grem1_3           | sqlite_svr | ("table" 'grem1_3', schema_name 'cm')           | 
+ import2 | limittest         | sqlite_svr | ("table" 'limittest', schema_name 'cm')         | 
+ import2 | multiprimary      | sqlite_svr | ("table" 'multiprimary', schema_name 'cm')      | 
+ import2 | noprimary         | sqlite_svr | ("table" 'noprimary', schema_name 'cm')         | 
+ import2 | norowid           | sqlite_svr | ("table" 'norowid', schema_name 'cm')           | 
+ import2 | notype            | sqlite_svr | ("table" 'notype', schema_name 'cm')            | 
+ import2 | numbers           | sqlite_svr | ("table" 'numbers', schema_name 'cm')           | 
+ import2 | shorty            | sqlite_svr | ("table" 'shorty', schema_name 'cm')            | 
+ import2 | strict            | sqlite_svr | ("table" 'strict', schema_name 'cm')            | 
+ import2 | t                 | sqlite_svr | ("table" 't', schema_name 'cm')                 | 
+ import2 | type_BINT         | sqlite_svr | ("table" 'type_BINT', schema_name 'cm')         | 
+ import2 | type_BIT          | sqlite_svr | ("table" 'type_BIT', schema_name 'cm')          | 
+ import2 | type_BLOB         | sqlite_svr | ("table" 'type_BLOB', schema_name 'cm')         | 
+ import2 | type_BOOLEAN      | sqlite_svr | ("table" 'type_BOOLEAN', schema_name 'cm')      | 
+ import2 | type_BOOLEAN_oper | sqlite_svr | ("table" 'type_BOOLEAN_oper', schema_name 'cm') | 
+ import2 | type_BOOLEANpk    | sqlite_svr | ("table" 'type_BOOLEANpk', schema_name 'cm')    | 
+ import2 | type_BYTE         | sqlite_svr | ("table" 'type_BYTE', schema_name 'cm')         | 
+ import2 | type_DATE         | sqlite_svr | ("table" 'type_DATE', schema_name 'cm')         | 
+ import2 | type_DOUBLE       | sqlite_svr | ("table" 'type_DOUBLE', schema_name 'cm')       | 
+ import2 | type_FLOAT        | sqlite_svr | ("table" 'type_FLOAT', schema_name 'cm')        | 
+ import2 | type_INTEGER      | sqlite_svr | ("table" 'type_INTEGER', schema_name 'cm')      | 
+ import2 | type_SINT         | sqlite_svr | ("table" 'type_SINT', schema_name 'cm')         | 
+ import2 | type_STRING       | sqlite_svr | ("table" 'type_STRING', schema_name 'cm')       | 
+ import2 | type_TEXT         | sqlite_svr | ("table" 'type_TEXT', schema_name 'cm')         | 
+ import2 | type_TIME         | sqlite_svr | ("table" 'type_TIME', schema_name 'cm')         | 
+ import2 | type_TIMESTAMP    | sqlite_svr | ("table" 'type_TIMESTAMP', schema_name 'cm')    | 
+ import2 | type_UUID         | sqlite_svr | ("table" 'type_UUID', schema_name 'cm')         | 
+ import2 | type_UUIDpk       | sqlite_svr | ("table" 'type_UUIDpk', schema_name 'cm')       | 
+ import2 | type_VARBIT       | sqlite_svr | ("table" 'type_VARBIT', schema_name 'cm')       | 
+ import2 | typetest          | sqlite_svr | ("table" 'typetest', schema_name 'cm')          | 
+(50 rows)
+
+--Testcase 32:
+SELECT sqlite_fdw_db_attach('sqlite_svr', '/tmp/sqlite_fdw_test/common.db', '試験 ');
+ sqlite_fdw_db_attach 
+----------------------
+                    3
+(1 row)
+
+--Testcase 33:
+SELECT * FROM sqlite_fdw_db_list('sqlite_svr');
+ sqlite_id | alias |              file              | readonly | txn  
+-----------+-------+--------------------------------+----------+------
+         0 | main  | /tmp/sqlite_fdw_test/core.db   | f        | none
+         2 | cm    | /tmp/sqlite_fdw_test/common.db | f        | none
+         3 | 試験  | /tmp/sqlite_fdw_test/common.db | f        | none
+(3 rows)
+
+--Testcase 34: -- normal, other alias
+SELECT sqlite_fdw_db_attach('sqlite_svr', '/tmp/sqlite_fdw_test/common.db', '試験 1');
+ sqlite_fdw_db_attach 
+----------------------
+                    4
+(1 row)
+
+--Testcase 35: -- ERR
+SELECT sqlite_fdw_db_attach('sqlite_svr', '/tmp/sqlite_fdw_test/common.db', '試験 1');
+ERROR:  Failed to attach SQLite DB, file '/tmp/sqlite_fdw_test/common.db', SQLite error 'database 試験 1 is already in use', result code 1
+--Testcase 36:
+SELECT sqlite_fdw_db_journal_mode('sqlite_svr', '試験 ') jm;
+   jm   
+--------
+ delete
+(1 row)
+
+--Testcase 37:
+SELECT sqlite_fdw_db_secure_delete('sqlite_svr', '試験 ') sd;
+ sd 
+----
+  1
+(1 row)
+
+--Testcase 38:
+SELECT sqlite_fdw_db_page_size('sqlite_svr', '試験 ') ps_b;
+ ps_b 
+------
+ 4096
+(1 row)
+
+--Testcase 39:
+SELECT sqlite_fdw_db_exclusive_locking_mode('sqlite_svr', '試験 ') elm;
+ elm 
+-----
+ f
+(1 row)
+
+--Testcase 40:
+SELECT sqlite_fdw_db_auto_vacuum('sqlite_svr', '試験 ') av;
+  av  
+------
+ none
+(1 row)
+
+--Testcase 41:
+SELECT sqlite_fdw_db_temp_store('sqlite_svr', '試験 ') tsm;
+   tsm   
+---------
+ default
+(1 row)
+
+--Testcase 42:
+SELECT sqlite_fdw_db_synchronous_mode('sqlite_svr', '試験 ') sm;
+   sm   
+--------
+ normal
+(1 row)
+
+--Testcase 43:
+SELECT * FROM sqlite_fdw_table_info('sqlite_svr', 'Unicode data', '試験 ');
+ sqlite_id | column | type | notnull | default_value | pk | column_mode 
+-----------+--------+------+---------+---------------+----+-------------
+         0 | i      | TEXT | f       |               | t  | normal
+         1 | t      | TEXT | t       |               | f  | normal
+(2 rows)
+
+--Testcase 44:
+SELECT * FROM sqlite_fdw_table_info('sqlite_svr', 'RO_RW_test', '試験 ');
+ sqlite_id | column | type  | notnull | default_value | pk | column_mode 
+-----------+--------+-------+---------+---------------+----+-------------
+         0 | i      | INT   | t       |               | t  | normal
+         1 | a      | TEXT  | f       |               | f  | normal
+         2 | b      | float | t       |               | f  | normal
+         3 | c      | INT   | f       | 10101         | f  | normal
+(4 rows)
+
+--Testcase 45:
+SELECT * FROM sqlite_fdw_table_info('sqlite_svr', 'type_UUID+', '試験 ');
+ sqlite_id | column | type | notnull | default_value | pk | column_mode 
+-----------+--------+------+---------+---------------+----+-------------
+         0 | i      | INT  | f       |               | f  | normal
+         1 | u      | uuid | f       |               | f  | normal
+         2 | t      |      | f       |               | f  | normal
+         3 | l      |      | f       |               | f  | normal
+(4 rows)
+
+--Testcase 46:
+SELECT * FROM sqlite_fdw_table_info('sqlite_svr', 'type_UUID', '試験 ');
+ sqlite_id | column | type | notnull | default_value | pk | column_mode 
+-----------+--------+------+---------+---------------+----+-------------
+         0 | i      | INT  | f       |               | f  | normal
+         1 | u      | uuid | f       |               | f  | normal
+(2 rows)
+
+--Testcase 47:
+SELECT * FROM sqlite_fdw_table_info('sqlite_svr', 'BitT', '試験 ');
+ sqlite_id | column |      type      | notnull | default_value | pk | column_mode 
+-----------+--------+----------------+---------+---------------+----+-------------
+         0 | p      | INTEGER        | f       |               | t  | normal
+         1 | a      | BIT(3)         | f       |               | f  | normal
+         2 | b      | BIT VARYING(5) | f       |               | f  | normal
+(3 rows)
+
+--Testcase 48:
+SELECT * FROM sqlite_fdw_table_info('sqlite_svr', 'strict', '試験 ');
+ sqlite_id | column | type | notnull | default_value | pk | column_mode 
+-----------+--------+------+---------+---------------+----+-------------
+         0 | i      | INT  | t       |               | t  | normal
+         1 | t      | TEXT | f       |               | f  | normal
+         2 | b      | REAL | t       |               | f  | normal
+         3 | c      | BLOB | f       | X'ADCD'       | f  | normal
+         4 | a      | ANY  | f       | 12            | f  | normal
+(5 rows)
+
+--Testcase 49:
+SELECT * FROM sqlite_fdw_table_info('sqlite_svr', 'norowid', '試験 ');
+ sqlite_id | column | type | notnull | default_value | pk | column_mode 
+-----------+--------+------+---------+---------------+----+-------------
+         0 | k      | TEXT | t       |               | t  | normal
+         1 | t      | TEXT | f       |               | f  | normal
+         2 | b      | REAL | t       |               | f  | normal
+         3 | c      | BLOB | f       | X'ADCD'       | f  | normal
+(4 rows)
+
+--Testcase 50:
+SELECT * FROM sqlite_fdw_rel_list('sqlite_svr', '試験 ');
+ schema |       table       |  type   | ncol | no_rowid | strict 
+--------+-------------------+---------+------+----------+--------
+ 試験   | sqlite_stat1      | table   |    3 | f        | f
+ 試験   | fk_s_artist       | table   |    2 | f        | f
+ 試験   | type_BOOLEAN_oper | table   |    5 | f        | f
+ 試験   | Unicode data      | table   |    2 | f        | f
+ 試験   | RO_RW_test        | table   |    4 | f        | f
+ 試験   | fts_table_config  | shadow  |    2 | t        | f
+ 試験   | fts_table_idx     | shadow  |    3 | t        | f
+ 試験   | fts_table_data    | shadow  |    2 | f        | f
+ 試験   | A a               | table   |    1 | f        | f
+ 試験   | shorty            | table   |    2 | f        | f
+ 試験   | noprimary         | table   |    2 | f        | f
+ 試験   | columntest        | table   |    3 | f        | f
+ 試験   | fts_table_docsize | shadow  |    2 | f        | f
+ 試験   | fts_table         | virtual |    0 | f        | f
+ 試験   | t                 | table   |    2 | f        | f
+ 試験   | department        | table   |    2 | f        | f
+ 試験   | type_BIT          | table   |    2 | f        | f
+ 試験   | type_TIME         | table   |    1 | f        | f
+ 試験   | employee          | table   |    3 | f        | f
+ 試験   | type_BOOLEANpk    | table   |    1 | f        | f
+ 試験   | grem1_1           | table   |    2 | f        | f
+ 試験   | fk_d_track        | table   |    3 | f        | f
+ 試験   | type_UUID         | table   |    2 | f        | f
+ 試験   | case_exp          | table   |    3 | f        | f
+ 試験   | type_BLOB         | table   |    1 | f        | f
+ 試験   | sqlite_schema     | table   |    5 | f        | f
+ 試験   | strict            | table   |    5 | f        | t
+ 試験   | type_VARBIT       | table   |    2 | f        | f
+ 試験   | limittest         | table   |    3 | f        | f
+ 試験   | type_SINT         | table   |    1 | f        | f
+ 試験   | grem1_2           | table   |    4 | f        | f
+ 試験   | norowid           | table   |    4 | t        | f
+ 試験   | typetest          | table   |    6 | f        | f
+ 試験   | type_TEXT         | table   |    1 | f        | f
+ 試験   | type_STRING       | table   |    1 | f        | f
+ 試験   | type_VARBIT+      | view    |    0 | f        | f
+ 試験   | type_BOOLEAN      | table   |    2 | f        | f
+ 試験   | empdata           | table   |    2 | f        | f
+ 試験   | type_DOUBLE       | table   |    1 | f        | f
+ 試験   | numbers           | table   |    2 | f        | f
+ 試験   | type_BOOLEAN+     | view    |    0 | f        | f
+ 試験   | fts_table_content | shadow  |    3 | f        | f
+ 試験   | grem1_3           | table   |    4 | f        | f
+ 試験   | type_BINT         | table   |    1 | f        | f
+ 試験   | type_INTEGER      | table   |    1 | f        | f
+ 試験   | type_FLOAT        | table   |    1 | f        | f
+ 試験   | multiprimary      | table   |    3 | f        | f
+ 試験   | notype            | table   |    1 | f        | f
+ 試験   | type_DATE         | table   |    1 | f        | f
+ 試験   | type_UUIDpk       | table   |    1 | f        | f
+ 試験   | BitT              | table   |    3 | f        | f
+ 試験   | type_BYTE         | table   |    1 | f        | f
+ 試験   | type_TIMESTAMP    | table   |    2 | f        | f
+ 試験   | type_BIT+         | view    |    0 | f        | f
+ 試験   | type_UUID+        | view    |    4 | f        | f
+ 試験   | alltypetest       | table   |   24 | f        | f
+(56 rows)
+
+--Testcase 51:
+SELECT * FROM sqlite_fdw_index_list('sqlite_svr', 'Unicode data', '試験 ');
+ sqlite_id |           index_name            | unique | source | partial 
+-----------+---------------------------------+--------+--------+---------
+         0 | sqlite_autoindex_Unicode data_1 | t      | pk     | f
+(1 row)
+
+--Testcase 52:
+SELECT * FROM sqlite_fdw_table_info('sqlite_svr', 'fts_table', '試験 ');
+ sqlite_id |   column    | type | notnull | default_value | pk | column_mode 
+-----------+-------------+------+---------+---------------+----+-------------
+         0 | name        |      | f       |               | f  | normal
+         1 | description |      | f       |               | f  | normal
+         2 | fts_table   |      | f       |               | f  | hidden+vtbl
+         3 | rank        |      | f       |               | f  | hidden+vtbl
+(4 rows)
+
+--Testcase 53:
+SELECT * FROM sqlite_fdw_table_info('sqlite_svr', 'grem1_1', '試験 ');
+ sqlite_id | column | type | notnull | default_value | pk | column_mode 
+-----------+--------+------+---------+---------------+----+-------------
+         0 | a      | INT  | f       |               | t  | normal
+         1 | b      | INT  | f       |               | f  | gen stored
+(2 rows)
+
+--Testcase 54:
+SELECT * FROM sqlite_fdw_table_info('sqlite_svr', 'grem1_2', '試験 ');
+ sqlite_id | column | type | notnull | default_value | pk | column_mode 
+-----------+--------+------+---------+---------------+----+-------------
+         0 | a      | INT  | f       |               | t  | normal
+         1 | b      | INT  | f       |               | f  | gen stored
+         2 | c      | INT  | f       |               | f  | gen stored
+         3 | d      | INT  | f       |               | f  | gen stored
+(4 rows)
+
+--Testcase 55:
+SELECT * FROM sqlite_fdw_table_info('sqlite_svr', 'grem1_3', '試験 ');
+ sqlite_id | column | type | notnull | default_value | pk | column_mode 
+-----------+--------+------+---------+---------------+----+-------------
+         0 | e      | INT  | f       |               | t  | normal
+         1 | f      | INT  | f       |               | f  | gen dynamic
+         2 | g      | INT  | f       |               | f  | gen stored
+         3 | h      | INT  | f       |               | f  | gen dynamic
+(4 rows)
+
+--Testcase 56:
+SELECT sqlite_fdw_db_application_id('sqlite_svr', '試験 ') ai;
+ ai 
+----
+  0
+(1 row)
+
+--Testcase 57:
+SELECT sqlite_fdw_db_cache_spill('sqlite_svr', '試験 ') dcs;
+ dcs 
+-----
+ 483
+(1 row)
+
+--Testcase 58:
+SELECT sqlite_fdw_db_max_page_count('sqlite_svr', '試験 ') mpc;
+    mpc     
+------------
+ 1073741823
+(1 row)
+
+--Testcase 59:
+SELECT sqlite_fdw_db_journal_size_limit('sqlite_svr', '試験 ') jsl;
+ jsl 
+-----
+    
+(1 row)
+
+--Testcase 60:
+SELECT sqlite_fdw_db_cache_size('sqlite_svr', '試験 ') cs;
+  cs   
+-------
+ -2000
+(1 row)
+
+--Testcase 61:
+SELECT sqlite_fdw_db_tmp_directory('sqlite_svr', '試験 ') td;
+ td 
+----
+ 
+(1 row)
+
+--Testcase 62:
+SELECT sqlite_fdw_db_user_version('sqlite_svr', '試験 ') uv;
+ uv 
+----
+  0
+(1 row)
+
+--Testcase 63:
+SELECT sqlite_fdw_db_schema_version('sqlite_svr', '試験 ') sv;
+ sv 
+----
+ 55
+(1 row)
+
+--Testcase 64:
+SELECT * FROM sqlite_fdw_db_wal_checkpoint('sqlite_svr', '試験 ') walcp;
+ blocked | mod_pages_in_wal | pages_suc_wr_to_db 
+---------+------------------+--------------------
+ f       |                  |                   
+(1 row)
+
+--Testcase 65:
+SELECT sqlite_fdw_db_fkeys('sqlite_svr', '試験 ') fk;
+ fk 
+----
+ t
+(1 row)
+
+--Testcase 66:
+SELECT * FROM sqlite_fdw_db_fkeys_list('sqlite_svr', 'fk_d_track', '試験 ');
+ i | j | source_table | column_name | constraint |   onupd   |   ondel   |  f8  
+---+---+--------------+-------------+------------+-----------+-----------+------
+ 0 | 0 | fk_s_artist  | trackartist | artistid   | NO ACTION | NO ACTION | NONE
+(1 row)
+
+--Testcase 67:
+SELECT sqlite_fdw_db_attach('sqlite_svr', '/tmp/sqlite_fdw_test/common.db', '試験 2', 'none');
+ sqlite_fdw_db_attach 
+----------------------
+                    5
+(1 row)
+
+--Testcase 68:
+SELECT * FROM sqlite_fdw_db_list('sqlite_svr');
+ sqlite_id | alias  |              file              | readonly | txn  
+-----------+--------+--------------------------------+----------+------
+         0 | main   | /tmp/sqlite_fdw_test/core.db   | f        | none
+         2 | cm     | /tmp/sqlite_fdw_test/common.db | f        | none
+         3 | 試験   | /tmp/sqlite_fdw_test/common.db | f        | none
+         4 | 試験 1 | /tmp/sqlite_fdw_test/common.db | f        | none
+         5 | 試験 2 | /tmp/sqlite_fdw_test/common.db | f        | none
+(5 rows)
+
+--Testcase 69:
+SELECT sqlite_fdw_db_attach('sqlite_svr', '/tmp/sqlite_fdw_test/common.db', '試験 3', 'quick');
+ sqlite_fdw_db_attach 
+----------------------
+                    6
+(1 row)
+
+--Testcase 70:
+SELECT * FROM sqlite_fdw_db_list('sqlite_svr');
+ sqlite_id | alias  |              file              | readonly | txn  
+-----------+--------+--------------------------------+----------+------
+         0 | main   | /tmp/sqlite_fdw_test/core.db   | f        | none
+         2 | cm     | /tmp/sqlite_fdw_test/common.db | f        | none
+         3 | 試験   | /tmp/sqlite_fdw_test/common.db | f        | none
+         4 | 試験 1 | /tmp/sqlite_fdw_test/common.db | f        | none
+         5 | 試験 2 | /tmp/sqlite_fdw_test/common.db | f        | none
+         6 | 試験 3 | /tmp/sqlite_fdw_test/common.db | f        | none
+(6 rows)
+
+--Testcase 72:
+SELECT sqlite_fdw_db_attach('sqlite_svr', '/tmp/sqlite_fdw_test/common.db', '試験 4', 'full');
+ sqlite_fdw_db_attach 
+----------------------
+                    7
+(1 row)
+
+--Testcase 72:
+SELECT * FROM sqlite_fdw_db_list('sqlite_svr');
+ sqlite_id | alias  |              file              | readonly | txn  
+-----------+--------+--------------------------------+----------+------
+         0 | main   | /tmp/sqlite_fdw_test/core.db   | f        | none
+         2 | cm     | /tmp/sqlite_fdw_test/common.db | f        | none
+         3 | 試験   | /tmp/sqlite_fdw_test/common.db | f        | none
+         4 | 試験 1 | /tmp/sqlite_fdw_test/common.db | f        | none
+         5 | 試験 2 | /tmp/sqlite_fdw_test/common.db | f        | none
+         6 | 試験 3 | /tmp/sqlite_fdw_test/common.db | f        | none
+         7 | 試験 4 | /tmp/sqlite_fdw_test/common.db | f        | none
+(7 rows)
+
+--Testcase 73:
+SELECT sqlite_fdw_db_attach('sqlite_svr', '/tmp/sqlite_fdw_test/common.db', '試験 5', 'fkeys');
+ sqlite_fdw_db_attach 
+----------------------
+                    8
+(1 row)
+
+--Testcase 74:
+SELECT * FROM sqlite_fdw_db_list('sqlite_svr');
+ sqlite_id | alias  |              file              | readonly | txn  
+-----------+--------+--------------------------------+----------+------
+         0 | main   | /tmp/sqlite_fdw_test/core.db   | f        | none
+         2 | cm     | /tmp/sqlite_fdw_test/common.db | f        | none
+         3 | 試験   | /tmp/sqlite_fdw_test/common.db | f        | none
+         4 | 試験 1 | /tmp/sqlite_fdw_test/common.db | f        | none
+         5 | 試験 2 | /tmp/sqlite_fdw_test/common.db | f        | none
+         6 | 試験 3 | /tmp/sqlite_fdw_test/common.db | f        | none
+         7 | 試験 4 | /tmp/sqlite_fdw_test/common.db | f        | none
+         8 | 試験 5 | /tmp/sqlite_fdw_test/common.db | f        | none
+(8 rows)
+
+--Testcase 75:
+SELECT * FROM sqlite_fdw_db_fkeys_check('sqlite_svr', 'fk_d_track', '試験 4');
+ source_table | rowid | fk_from_table | i 
+--------------+-------+---------------+---
+ fk_d_track   |     2 | fk_s_artist   | 0
+(1 row)
+
+-- NON EXIST SERVER TESTS
+--Testcase 150:
+SELECT sqlite_fdw_db_attach('nonexist_svr', '/tmp/sqlite_fdw_test/common.db', '試験 ');
+ERROR:  server "nonexist_svr" does not exist
+--Testcase 151:
+SELECT * FROM sqlite_fdw_db_list('nonexist_svr');
+ERROR:  server "nonexist_svr" does not exist
+--Testcase 152:
+SELECT sqlite_fdw_db_attach('nonexist_svr', '/tmp/sqlite_fdw_test/common.db', '試験 1');
+ERROR:  server "nonexist_svr" does not exist
+--Testcase 154:
+SELECT sqlite_fdw_db_journal_mode('nonexist_svr', '試験 ') jm;
+ERROR:  server "nonexist_svr" does not exist
+--Testcase 155:
+SELECT sqlite_fdw_db_secure_delete('nonexist_svr', '試験 ') sd;
+ERROR:  server "nonexist_svr" does not exist
+--Testcase 156:
+SELECT sqlite_fdw_db_page_size('nonexist_svr', '試験 ') ps_b;
+ERROR:  server "nonexist_svr" does not exist
+--Testcase 157:
+SELECT sqlite_fdw_db_exclusive_locking_mode('nonexist_svr', '試験 ') elm;
+ERROR:  server "nonexist_svr" does not exist
+--Testcase 158:
+SELECT sqlite_fdw_db_auto_vacuum('nonexist_svr', '試験 ') av;
+ERROR:  server "nonexist_svr" does not exist
+--Testcase 159:
+SELECT sqlite_fdw_db_temp_store('nonexist_svr', '試験 ') tsm;
+ERROR:  server "nonexist_svr" does not exist
+--Testcase 160:
+SELECT sqlite_fdw_db_synchronous_mode('nonexist_svr', '試験 ') sm;
+ERROR:  server "nonexist_svr" does not exist
+--Testcase 161:
+SELECT * FROM sqlite_fdw_table_info('nonexist_svr', 'Unicode data', '試験 ');
+ERROR:  server "nonexist_svr" does not exist
+--Testcase 162:
+SELECT * FROM sqlite_fdw_rel_list('nonexist_svr', '試験 ');
+ERROR:  server "nonexist_svr" does not exist
+--Testcase 163:
+SELECT * FROM sqlite_fdw_index_list('nonexist_svr', 'Unicode data', '試験 ');
+ERROR:  server "nonexist_svr" does not exist
+--Testcase 164:
+SELECT * FROM sqlite_fdw_table_info('nonexist_svr', 'fts_table', '試験 ');
+ERROR:  server "nonexist_svr" does not exist
+--Testcase 165:
+SELECT * FROM sqlite_fdw_table_info('nonexist_svr', 'grem1_1', '試験 ');
+ERROR:  server "nonexist_svr" does not exist
+--Testcase 166:
+SELECT * FROM sqlite_fdw_table_info('nonexist_svr', 'grem1_2', '試験 ');
+ERROR:  server "nonexist_svr" does not exist
+--Testcase 167:
+SELECT * FROM sqlite_fdw_table_info('nonexist_svr', 'grem1_3', '試験 ');
+ERROR:  server "nonexist_svr" does not exist
+--Testcase 168:
+SELECT sqlite_fdw_db_application_id('nonexist_svr', '試験 ') ai;
+ERROR:  server "nonexist_svr" does not exist
+--Testcase 169:
+SELECT sqlite_fdw_db_cache_spill('nonexist_svr', '試験 ') dcs;
+ERROR:  server "nonexist_svr" does not exist
+--Testcase 170:
+SELECT sqlite_fdw_db_max_page_count('nonexist_svr', '試験 ') mpc;
+ERROR:  server "nonexist_svr" does not exist
+--Testcase 171:
+SELECT sqlite_fdw_db_journal_size_limit('nonexist_svr', '試験 ') jsl;
+ERROR:  server "nonexist_svr" does not exist
+--Testcase 172:
+SELECT sqlite_fdw_db_cache_size('nonexist_svr', '試験 ') cs;
+ERROR:  server "nonexist_svr" does not exist
+--Testcase 173:
+SELECT sqlite_fdw_db_tmp_directory('nonexist_svr', '試験 ') td;
+ERROR:  server "nonexist_svr" does not exist
+--Testcase 174:
+SELECT sqlite_fdw_db_user_version('nonexist_svr', '試験 ') uv;
+ERROR:  server "nonexist_svr" does not exist
+--Testcase 175:
+SELECT sqlite_fdw_db_schema_version('nonexist_svr', '試験 ') sv;
+ERROR:  server "nonexist_svr" does not exist
+--Testcase 176:
+SELECT * FROM sqlite_fdw_db_wal_checkpoint('nonexist_svr', '試験 ') walcp;
+ERROR:  server "nonexist_svr" does not exist
+--Testcase 177:
+SELECT sqlite_fdw_db_fkeys('nonexist_svr', '試験 ') fk;
+ERROR:  server "nonexist_svr" does not exist
+--Testcase 178:
+SELECT * FROM sqlite_fdw_db_fkeys_list('nonexist_svr', 'fk_d_track', '試験 ');
+ERROR:  server "nonexist_svr" does not exist
+--Testcase 179:
+SELECT sqlite_fdw_db_attach('nonexist_svr', '/tmp/sqlite_fdw_test/common.db', '試験 2', 'none');
+ERROR:  server "nonexist_svr" does not exist
+--Testcase 180:
+SELECT * FROM sqlite_fdw_db_fkeys_check('nonexist_svr', 'fk_d_track', '試験 4');
+ERROR:  server "nonexist_svr" does not exist
+-- NON EXIST TABLE TEST
+--Testcase 200:
+SELECT sqlite_fdw_db_attach('sqlite_svr', 'notexist.db', 'notexist');
+ERROR:  Failed to attach SQLite DB, file 'notexist.db', SQLite error 'unable to open database: notexist.db', result code 14
+--Testcase 201:
+SELECT * FROM sqlite_fdw_db_list('sqlite_svr');
+ sqlite_id | alias  |              file              | readonly | txn  
+-----------+--------+--------------------------------+----------+------
+         0 | main   | /tmp/sqlite_fdw_test/core.db   | f        | none
+         2 | cm     | /tmp/sqlite_fdw_test/common.db | f        | none
+         3 | 試験   | /tmp/sqlite_fdw_test/common.db | f        | none
+         4 | 試験 1 | /tmp/sqlite_fdw_test/common.db | f        | none
+         5 | 試験 2 | /tmp/sqlite_fdw_test/common.db | f        | none
+         6 | 試験 3 | /tmp/sqlite_fdw_test/common.db | f        | none
+         7 | 試験 4 | /tmp/sqlite_fdw_test/common.db | f        | none
+         8 | 試験 5 | /tmp/sqlite_fdw_test/common.db | f        | none
+(8 rows)
+
+--Testcase 202:
+SELECT sqlite_fdw_db_journal_mode('sqlite_svr', 'notexist') jm;
+ERROR:  SQL error during prepare: unknown database "notexist"
+CONTEXT:  PRAGMA "notexist".journal_mode;
+--Testcase 203:
+SELECT sqlite_fdw_db_secure_delete('sqlite_svr', 'notexist') sd;
+ERROR:  SQL error during prepare: unknown database "notexist"
+CONTEXT:  PRAGMA "notexist".secure_delete;
+--Testcase 204:
+SELECT sqlite_fdw_db_page_size('sqlite_svr', 'notexist') ps_b;
+ERROR:  SQL error during prepare: unknown database "notexist"
+CONTEXT:  PRAGMA "notexist".page_size;
+--Testcase 205:
+SELECT sqlite_fdw_db_exclusive_locking_mode('sqlite_svr', 'notexist') elm;
+ERROR:  SQL error during prepare: unknown database "notexist"
+CONTEXT:  PRAGMA "notexist".locking_mode;
+--Testcase 206:
+SELECT sqlite_fdw_db_auto_vacuum('sqlite_svr', 'notexist') av;
+ERROR:  SQL error during prepare: unknown database "notexist"
+CONTEXT:  PRAGMA "notexist".auto_vacuum;
+--Testcase 207:
+SELECT sqlite_fdw_db_temp_store('sqlite_svr', 'notexist') tsm;
+ERROR:  SQL error during prepare: unknown database "notexist"
+CONTEXT:  PRAGMA "notexist".temp_store;
+--Testcase 208:
+SELECT sqlite_fdw_db_synchronous_mode('sqlite_svr', 'notexist') sm;
+ERROR:  SQL error during prepare: unknown database "notexist"
+CONTEXT:  PRAGMA "notexist".synchronous;
+--Testcase 209:
+SELECT * FROM sqlite_fdw_table_info('sqlite_svr', 'Unicode data', 'notexist');
+ERROR:  SQL error during prepare: unknown database "notexist"
+CONTEXT:  PRAGMA "notexist".table_xinfo ("Unicode data");
+--Testcase 210:
+SELECT * FROM sqlite_fdw_rel_list('sqlite_svr', 'notexist');
+ERROR:  SQL error during prepare: unknown database "notexist"
+CONTEXT:  PRAGMA "notexist".table_list;
+--Testcase 211:
+SELECT * FROM sqlite_fdw_index_list('sqlite_svr', 'Unicode data', 'notexist ');
+ERROR:  SQL error during prepare: unknown database "notexist "
+CONTEXT:  PRAGMA "notexist ".index_list ("Unicode data");
+--Testcase 212:
+SELECT sqlite_fdw_db_application_id('sqlite_svr', 'notexist') ai;
+ERROR:  SQL error during prepare: unknown database "notexist"
+CONTEXT:  PRAGMA "notexist".application_id;
+--Testcase 213:
+SELECT sqlite_fdw_db_cache_spill('sqlite_svr', 'notexist') dcs;
+ERROR:  SQL error during prepare: unknown database "notexist"
+CONTEXT:  PRAGMA "notexist".cache_spill;
+--Testcase 214:
+SELECT sqlite_fdw_db_max_page_count('sqlite_svr', 'notexist') mpc;
+ERROR:  SQL error during prepare: unknown database "notexist"
+CONTEXT:  PRAGMA "notexist".max_page_count;
+--Testcase 215:
+SELECT sqlite_fdw_db_journal_size_limit('sqlite_svr', 'notexist') jsl;
+ERROR:  SQL error during prepare: unknown database "notexist"
+CONTEXT:  PRAGMA "notexist".journal_size_limit;
+--Testcase 216:
+SELECT sqlite_fdw_db_cache_size('sqlite_svr', 'notexist') cs;
+ERROR:  SQL error during prepare: unknown database "notexist"
+CONTEXT:  PRAGMA "notexist".cache_size;
+--Testcase 217:
+SELECT sqlite_fdw_db_tmp_directory('sqlite_svr', 'notexist') td;
+ERROR:  SQL error during prepare: unknown database "notexist"
+CONTEXT:  PRAGMA "notexist".temp_store_directory;
+--Testcase 218:
+SELECT sqlite_fdw_db_user_version('sqlite_svr', 'notexist') uv;
+ERROR:  SQL error during prepare: unknown database "notexist"
+CONTEXT:  PRAGMA "notexist".user_version;
+--Testcase 219:
+SELECT sqlite_fdw_db_schema_version('sqlite_svr', 'notexist') sv;
+ERROR:  SQL error during prepare: unknown database "notexist"
+CONTEXT:  PRAGMA "notexist".schema_version;
+--Testcase 220:
+SELECT * FROM sqlite_fdw_db_wal_checkpoint('sqlite_svr', 'notexist') walcp;
+ERROR:  SQL error during prepare: unknown database "notexist"
+CONTEXT:  PRAGMA "notexist".wal_checkpoint;
+--Testcase 221:
+SELECT sqlite_fdw_db_fkeys('sqlite_svr', 'notexist') fk;
+ERROR:  SQL error during prepare: unknown database "notexist"
+CONTEXT:  PRAGMA "notexist".foreign_keys;
+--Testcase 222:
+SELECT * FROM sqlite_fdw_db_fkeys_list('sqlite_svr', 'fk_d_track', 'notexist');
+ERROR:  SQL error during prepare: unknown database "notexist"
+CONTEXT:  PRAGMA "notexist".foreign_key_list("fk_d_track");
+--Testcase 223:
+SELECT * FROM sqlite_fdw_db_fkeys_check('sqlite_svr', 'fk_d_track', 'notexist');
+ERROR:  SQL error during prepare: unknown database "notexist"
+CONTEXT:  PRAGMA "notexist".foreign_key_check("fk_d_track");
+--Testcase 100:
+DROP SERVER sqlite_svr CASCADE;
+NOTICE:  drop cascades to 211 other objects
+DETAIL:  drop cascades to foreign table aggtest
+drop cascades to foreign table student
+drop cascades to foreign table "Unicode data"
+drop cascades to foreign table import1."FLOAT4_TBL"
+drop cascades to foreign table import1."FLOAT4_TMP"
+drop cascades to foreign table import1."FLOAT8_TBL"
+drop cascades to foreign table import1."FLOAT8_TMP"
+drop cascades to foreign table import1."INT2_TBL"
+drop cascades to foreign table import1."INT2_TMP"
+drop cascades to foreign table import1."INT4_TBL"
+drop cascades to foreign table import1."INT4_TMP"
+drop cascades to foreign table import1."INT8_TBL"
+drop cascades to foreign table import1."INT8_TMP"
+drop cascades to foreign table import1.test_having
+drop cascades to foreign table import1.onek
+drop cascades to foreign table import1.onek2
+drop cascades to foreign table import1.tenk1
+drop cascades to foreign table import1.tenk2
+drop cascades to foreign table import1.aggtest
+drop cascades to foreign table import1.student
+drop cascades to foreign table import1.person
+drop cascades to foreign table import1.road
+drop cascades to foreign table import1.road_tmp
+drop cascades to foreign table import1.dates
+drop cascades to foreign table import1.btg
+drop cascades to foreign table import1.bitwise_test
+drop cascades to foreign table import1.bool_test
+drop cascades to foreign table import1.bool_test_tmp
+drop cascades to foreign table import1.minmaxtest
+drop cascades to foreign table import1.agg_tb
+drop cascades to foreign table import1.agg_tb2
+drop cascades to foreign table import1.agg_t1
+drop cascades to foreign table import1.agg_t2
+drop cascades to foreign table import1.agg_t3
+drop cascades to foreign table import1.agg_t4
+drop cascades to foreign table import1.agg_t5
+drop cascades to foreign table import1.agg_t6
+drop cascades to foreign table import1.agg_t7
+drop cascades to foreign table import1.agg_t8
+drop cascades to foreign table import1.regr_test
+drop cascades to foreign table import1.agg_t9
+drop cascades to foreign table import1.agg_t10
+drop cascades to foreign table import1.agg_t11
+drop cascades to foreign table import1.agg_t12
+drop cascades to foreign table import1.agg_t13
+drop cascades to foreign table import1.agg_t14
+drop cascades to foreign table import1.agg_data_2k
+drop cascades to foreign table import1.agg_data_20k
+drop cascades to foreign table import1.t1
+drop cascades to foreign table import1.t2
+drop cascades to foreign table import1.agg_t15
+drop cascades to foreign table import1.agg_t16
+drop cascades to foreign table import1.agg_t17
+drop cascades to foreign table import1.agg_t170
+drop cascades to foreign table import1.agg_t18
+drop cascades to foreign table import1.agg_t19
+drop cascades to foreign table import1.agg_t20
+drop cascades to foreign table import1.agg_t21
+drop cascades to foreign table import1.float_tb
+drop cascades to foreign table import1.multi_arg_agg
+drop cascades to foreign table import1.agg_group_1
+drop cascades to foreign table import1.agg_group_2
+drop cascades to foreign table import1.agg_group_3
+drop cascades to foreign table import1.agg_group_4
+drop cascades to foreign table import1.agg_hash_1
+drop cascades to foreign table import1.agg_hash_2
+drop cascades to foreign table import1.agg_hash_3
+drop cascades to foreign table import1.agg_hash_4
+drop cascades to foreign table import1.testdata
+drop cascades to foreign table import1."NON_ERROR_THROWING_API_FLOAT4"
+drop cascades to foreign table import1."NON_ERROR_THROWING_API_FLOAT8"
+drop cascades to foreign table import1.numeric_tmp
+drop cascades to foreign table import1."NON_ERROR_THROWING_API_INT4"
+drop cascades to foreign table import1.special_case_int4
+drop cascades to foreign table import1."VARCHAR_TBL"
+drop cascades to foreign table import1."NON_ERROR_THROWING_API_INT8"
+drop cascades to foreign table import1.special_case_int8
+drop cascades to foreign table import1.bytea_test_table
+drop cascades to foreign table import1.pagg_test
+drop cascades to foreign table import1.num_data
+drop cascades to foreign table import1.num_exp_add
+drop cascades to foreign table import1.num_exp_sub
+drop cascades to foreign table import1.num_exp_div
+drop cascades to foreign table import1.num_exp_mul
+drop cascades to foreign table import1.num_exp_sqrt
+drop cascades to foreign table import1.num_exp_ln
+drop cascades to foreign table import1.num_exp_log10
+drop cascades to foreign table import1.num_exp_power_10_ln
+drop cascades to foreign table import1.num_variance
+drop cascades to foreign table import1.num_result
+drop cascades to foreign table import1.v
+drop cascades to foreign table import1.fract_only
+drop cascades to foreign table import1.ceil_floor_round
+drop cascades to foreign table import1.ceil_round_float8
+drop cascades to foreign table import1.width_bucket_tbl
+drop cascades to foreign table import1.width_bucket_test
+drop cascades to foreign table import1.num_input_test
+drop cascades to foreign table import1.num_trigger_test
+drop cascades to foreign table import1.num_tmp
+drop cascades to foreign table import1.to_number_tbl
+and 111 other objects (see server log for list)
+--Testcase 101:
+DROP EXTENSION sqlite_fdw CASCADE;

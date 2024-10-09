@@ -4,7 +4,7 @@ SQLite Foreign Data Wrapper for PostgreSQL
 This is a foreign data wrapper (FDW) to connect [PostgreSQL](https://www.postgresql.org/)
 to [SQLite](https://sqlite.org/) database file. This FDW works with PostgreSQL 12, 13, 14, 15, 16 and confirmed with SQLite 3.42.0.
 
-<img src="https://upload.wikimedia.org/wikipedia/commons/2/29/Postgresql_elephant.svg" align="center" height="100" alt="PostgreSQL"/>	+	<img src="https://upload.wikimedia.org/wikipedia/commons/3/38/SQLite370.svg" align="center" height="100" alt="SQLite"/>
+<img src="https://upload.wikimedia.org/wikipedia/commons/2/29/Postgresql_elephant.svg" align="center" height="100" alt="PostgreSQL"/>	+	<img src="https://avatars.githubusercontent.com/u/48680494?v=4" align="center" height="100" alt="SQLite"/>
 
 Contents
 --------
@@ -135,11 +135,12 @@ Usage
 
 - **updatable** as *boolean*, optional, default *true*
 
-  This option can allow or disallow data modification on foreign server for all foreign objects by default. Please note, this option can be overwritten on table level or have no effect because of some filesystem restrictions, see [connection to SQLite database file and access control](#connection-to-sqlite-database-file-and-access-control). This is only recommentadion of PostgreSQL foreign server owner user not to modify data in foreign server tables. For strong restriction see the next option `force_readonly`.
+  This option can allow or disallow data modification on foreign server for all foreign objects by default. Please note, this option can be overwritten on table level or have no effect because of some filesystem restrictions, see about [connection to SQLite database file and access control](#connection-to-sqlite-database-file-and-access-control). This is only recommentadion of PostgreSQL foreign server owner user not to modify data in foreign server tables. For strong restriction see the next option `force_readonly`.
 
 - **force_readonly** as *boolean*, optional, default *false*
 
-  This option is useful if you need grant user permission to create a foreign tables on the foreign server and revoke user permission to modify any table data on this foreign server. This option with `true` value can disallow any write operations on foreign server table data through SQLite file readonly access mode. This option driven only by foreign server owner role can not be overwritten by any `updatable` option value. This is a strong restriction given by PostgreSQL foreign server owner user not to modify data in any foreign server tables. Also see [Connection to SQLite database file and access control](#connection-to-sqlite-database-file-and-access-control).
+  This option is useful if you need grant user permission to create a foreign tables on the foreign server and revoke user permission to modify any table data on this foreign server. This option with `true` value can disallow any write operations on foreign server table data through SQLite file readonly access mode. This option driven only by foreign server owner role can not be overwritten by any `updatable` option value. This is a strong restriction given by PostgreSQL foreign server owner user not to modify data in any foreign server tables. Also see about [connection to SQLite database file and access control](#connection-to-sqlite-database-file-and-access-control).
+  Please note `force_readonly` option manage modification access not only for the main SQLite database of the `FOREIGN SERVER`, but also for all attached databases.
 
 - **truncatable** as *boolean*, optional, default *false*
 
@@ -153,16 +154,40 @@ Usage
 
   Specifies the number of rows which should be inserted in a single `INSERT` operation. This setting can be overridden for individual tables.
 
+- **integrity_check** as *string*, optional, default `full`
+
+	Integrity checks uses to ensure database file is well-formed. This option applicable only for read-write SQLite files, otherwise ignored.
+`none` - no integrity checks before connection
+`quick` - does such integrity checks as
+	1.	Table or index entries that are out of sequence
+	2.	Misformatted records
+	3.	Missing pages
+	4.	Missing or surplus index entries
+	5.	CHECK, and NOT NULL constraint errors
+	6.	Integrity of the freelist
+	7.	Sections of the database that are used more than once, or not at all
+	Uses O(N) time where N is the total number of rows in the database
+`full` - does integrity checks listed for `quick` mode and
+	8.	UNIQUE constraint errors
+	Uses O(NlogN) where N is the total number of rows in the database
+`fkeys` -  - does integrity checks listed for `full` mode and
+	9.	FOREIGN KEY constraint errors
+
+- **foreign_keys** as *boolean*, optional, default *true*
+
+	This option allows to enable internal SQLite foreign keys support if there is SQL declared foreign keys in the SQLite database. Without this option some PostgreSQL data modification on a foreign table can destroy foreign key constraint in SQLite without any notice. This option is applicable only for readwrite connection to SQLite database, because readonly connections cannot modify any data in SQLite tables. This option is ignored for readonly connections.
+
 ### CREATE USER MAPPING options
 
-There is no user or password conceptions in SQLite, hence `sqlite_fdw` no need any `CREATE USER MAPPING` command.
-
-About access model and possible data modifications problems see about [connection to SQLite database file and access control](#connection-to-sqlite-database-file-and-access-control).
+There is no user or password conceptions in SQLite, hence `sqlite_fdw` no need any `CREATE USER MAPPING` command. In case of any access or data modification problems please read about [connection to SQLite database file and access control](#connection-to-sqlite-database-file-and-access-control).
 
 ### CREATE FOREIGN TABLE options
 
 `sqlite_fdw` accepts the following table-level options via the
 `CREATE FOREIGN TABLE` command:
+
+- **schema_name** as *string*, optional, default `main`
+  Through `sqlite_fdw_db_attach` PostgreSQL function call you can attach other SQLite databases to the `FOREIGN SERVER` like after SQLite `ATTACH DATABASE` command. Any SQLite objects from this databases will have selected alias as name prefix used like PostgreSQL schema prefix. This option allows to have deal with tables from attached SQLite databases, not only with objects from default `main` database of `FOREIGN SERVER`.
 
 - **table** as *string*, optional, no default
 
@@ -316,13 +341,7 @@ Functions
 As well as the standard `sqlite_fdw_handler()` and `sqlite_fdw_validator()`
 functions, `sqlite_fdw` provides the following user-callable utility functions:
 
-- SETOF record **sqlite_fdw_get_connections**(server_name text, valid bool)
-
-- bool **sqlite_fdw_disconnect**(text)
-
-  Closes connection from PostgreSQL to SQLite in the current session.
-
-- bool **sqlite_fdw_disconnect_all()**
+### Common FDW diagnostics
 
 - **sqlite_fdw_version()**;
 Returns standard "version integer" as `major version * 10000 + minor version * 100 + bugfix`.
@@ -331,6 +350,176 @@ sqlite_fdw_version
 --------------------
               20400
 ```
+
+- **sqlite_fdw_mem**()
+Returns number of bytes of SQLite malloced but not freed (outstanding) memory.
+
+- **sqlite_fdw_sqlite_version**()
+Returns standard "version integer" as `major version * 10000 + minor version * 100 + bugfix` for SQLite library used for FDW.
+
+- **sqlite_fdw_sqlite_code_source**()
+Returns code source for SQLite library used for FDW.
+
+### Connection management
+
+- SETOF record **sqlite_fdw_get_connections**(server_name text, valid bool)
+
+- bool **sqlite_fdw_disconnect**(text)
+
+  Closes connection from PostgreSQL to SQLite in the current session.
+
+- bool **sqlite_fdw_disconnect_all()**
+
+### SQLite attached files (databases, schemas)
+
+- **sqlite_fdw_db_attach** (server name, sqlite_db_string text, sqlite_db_alias name)
+Attach SQLite database file as additional remote schema for PosrgreSQL foreign server.
+Similar to SQLite `ATTACH DATABASE ... AS ...` command.
+Returns internal SQLite id for attached database.
+
+- **sqlite_fdw_db_detach**(server name, sqlite_db_alias name)
+Detach SQLite database file as additional remote schema from PosrgreSQL foreign server
+Similar to SQLite `DETACH DATABASE ...` command.
+
+- **sqlite_fdw_db_list**(server name)
+This table function show list of all attched to PostgreSQL `FOREIGN SERVER` SQLite
+databases with its aliases or so called schema names.
+```
+SELECT * FROM sqlite_fdw_db_list('sqlite_svr');
+ sqlite_id | alias |              file              | readonly | txn
+-----------+-------+--------------------------------+----------+------
+         0 | main  | /tmp/sqlite_fdw_test/core.db   | t        | none
+         2 | 試験   | /tmp/μ/проверка.db             | f        | none
+```
+Attributes:
+_sqlite__id_: internal SQLite id for attached database. This id is unique inside of PostgreSQL `FOREIGN SERVER`.
+_alias_: alias of SQLite database file which also is schema name for this FDW.
+_file_: address of SQLite database file.
+_readonly_: flague of readonly database from SQLite internal metadata.
+_txn_ : current transaction status of the database. This attribute is useful in case if many applications works with the SQLite DB file. Possible values: `none`, `read`, `write`.
+
+### SQLite database file metadata
+
+- **sqlite_fdw_db_encoding**(server name)
+Returns internal SQLite database file endoding like `PRAGAMA encoding` SQLite query.
+
+- **sqlite_fdw_db_schema_version**(server name, sqlite_db_alias name)
+Returns internal SQLite database file schema version - number of changes.
+
+- **sqlite_fdw_db_user_version**(server name, sqlite_db_alias name)
+Returns internal SQLite database file user version - number for external usage.
+
+- **sqlite_fdw_db_application_id**(server name, sqlite_db_alias name)
+Returns internal SQLite database file application id, which allow determine subtype of SQLite database for a stable formats like OGC GeoPackage file, MBTiles tileset, TeXnicard file etc.
+
+### SQLite metadata
+
+- **sqlite_fdw_rel_list**(server name, sqlite_db_alias name)
+Returnl all relations from SQLite database.
+Attributes:
+_schema_: Name of attached database hold this table.
+_name_: Name of the table itself.
+_type_: `table`, `view`, `virtual`, `shadow`.
+_ncol_: Number of columns.
+_wr_: `true` for a `WITHOUT ROWID` table.
+_strict_: `true` for a `STRICT` table.
+
+- **sqlite_fdw_table_info**(server name, table name, sqlite_db_alias name)
+Returns full description of a table from SQLite database.
+Attributes:
+_cid_: Column id (numbered from left to right, starting at 0).
+_name_: Column name.
+_type_: Column declaration type.
+_notnull_: `true` if `NOT NULL` is part of column declaration.
+_dflt_value_: The default value for the column, if there is.
+_pk_: Non-zero for PK fields.
+_col_mode_: column implementation type: `normal`, `hidden+vtbl`, `gen dynamic`, `gen stored`.
+
+- **sqlite_fdw_index_list**(server name, table name, sqlite_db_alias name)
+Returns full description of a index from SQLite database.
+Attributes:
+_sqlite__id_: internal SQLite code.
+_index_name_: name of the index.
+_unique_: `true` for unique indexes.
+_source_: `c` if the index was created by a `CREATE INDEX` statement, `u` if the index was created by a `UNIQUE` constraint, or `pk` if the index was created by a `PRIMARY KEY` constraint.
+_partial_: `true` for partial idexes.
+
+### SQLite journal
+
+- **sqlite_fdw_db_journal_mode**(server name, sqlite_db_alias name)
+Returns journal mode of the SQLite database.
+
+- **sqlite_fdw_db_journal_size_limit**(server name, sqlite_db_alias name)
+Returns journal size limit in bytes.
+
+- **sqlite_fdw_db_synchronous_mode**(server name, sqlite_db_alias name)
+Returns text synchronous mode of the SQLite database.
+Possible values `off`, `on`, `normal`, `full`, `extra`.
+
+### SQLite foreign keys
+
+- **sqlite_fdw_db_fkeys**(server name, sqlite_db_alias name)
+Returns `true` if there is support of SQLite foreign keys in the SQLite database.
+
+- **sqlite_fdw_db_fkeys_list**(server name, sqlite_db_alias name)
+This table function returls list of SQLite foreign keys.
+Attributes:
+_i_:
+_j_:
+_source__table_:
+_column__name_:
+_constraint_:
+_onupd_: `ON UPDATE` SQL action.
+_ondel_: `ON DELETE` SQL action.
+_f8_: reserved field
+
+- **sqlite_fdw_db_fkeys_check**(server name, sqlite_db_alias name)
+This table function returns metadata about FOREIGN KEY constraint problems
+Attributes:
+_source__table_: Name of the table that contains the `REFERENCES` clause.
+_rowid_: Rowid of the row that contains the invalid `REFERENCES` clause, or `NULL` if the child table is a `WITHOUT ROWID` table.
+_fk_from_table_: Name of the table that is referred to.
+_i_: Index of the specific foreign key constraint that failed. The same integer as the first column in the output of the `foreign_key_list` SQLite pragma.
+
+### SQLite file pages
+
+- **sqlite_fdw_db_page_size**(server name, sqlite_db_alias name)
+Returns page size of the SQLite database in bytes.
+
+- **sqlite_fdw_db_cache_spill**(server name, sqlite_db_alias name)
+Returns cache spill in pages.
+
+- **sqlite_fdw_db_max_page_count**(server name, sqlite_db_alias name)
+Returns maximal page count in database in pages.
+
+- **sqlite_fdw_db_cache_size**(server name, sqlite_db_alias name)
+Returns cache size in pages.
+
+### SQLite WAL and temporary storage
+
+- **sqlite_fdw_db_tmp_directory**(server name, sqlite_db_alias name)
+Returns temporary storage directory if not default.
+
+- **sqlite_fdw_db_temp_store**(server name, sqlite_db_alias name)
+Returns temporary storage mode of the SQLite database. Possible values: `default`, `memory`, `file`
+
+- **sqlite_fdw_db_wal_checkpoint**(server name, sqlite_db_alias name)
+This table function returns SQLite WAL checkpoint status.
+Attributes:
+_blocked_: `true` if a RESTART or FULL or TRUNCATE checkpoint was blocked from completing, for example because another thread or process was actively using the database. In other words, `true` if the equivalent call to sqlite3_wal_checkpoint_v2() would have returned SQLITE_BUSY.
+_mod_pages_in_wal_: Number of modified pages that have been written to the write-ahead log file.
+_pages_suc_wr_to_db_: Number of pages in the write-ahead log file that have been successfully moved back into the database file at the conclusion of the checkpoint.
+
+### Other diagnostic SQLite PRAGMAs
+
+- **sqlite_fdw_db_secure_delete**(server name, sqlite_db_alias name)
+Returns secure delete mode code of the SQLite database.
+
+- **sqlite_fdw_db_exclusive_locking_mode**(server name, sqlite_db_alias name)
+Returns `true` is case of exclusive locking mode or `false` in case of normal.
+
+- **sqlite_fdw_db_auto_vacuum**(server name, sqlite_db_alias name)
+Returns auto vacuum mode of the SQLite database.
 
 Identifier case handling
 ------------------------
@@ -452,7 +641,7 @@ Once for a database you need, as PostgreSQL superuser.
 
 ### Create a foreign server with appropriate configuration:
 
-Once for a foreign datasource you need, as PostgreSQL superuser. Please specify SQLite database path using `database` option.
+Once for a foreign datasource you need, as PostgreSQL superuser. Please specify SQLite database file path using `database` option.
 
 ```sql
 	CREATE SERVER sqlite_server
@@ -535,12 +724,14 @@ As above, but with aliased column names:
 ### Import a SQLite database as schema to PostgreSQL:
 
 ```sql
-	IMPORT FOREIGN SCHEMA someschema
+	IMPORT FOREIGN SCHEMA main
 	FROM SERVER sqlite_server
 	INTO public;
 ```
 
-Note: `someschema` has no particular meaning and can be set to an arbitrary value.
+Note: `main` means default SQLite database with address from `FOREIGN SERVER` option.
+You can connect to other SQLite databases as schemas after `sqlite_fdw_db_attach` function calling.
+Please note, all attached databases can be detaced after `IMPORT FOREIGN SCHEMA`. Please verify and attach again.
 
 ### Access foreign table
 For the table from previous examples

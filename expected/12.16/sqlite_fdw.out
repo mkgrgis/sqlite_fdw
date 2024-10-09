@@ -17,7 +17,7 @@ CREATE FOREIGN TABLE numbers(a int OPTIONS (key 'true'), b varchar(255)) SERVER 
 CREATE FOREIGN TABLE multiprimary(a int, b int OPTIONS (key 'true'), c int OPTIONS(key 'true')) SERVER sqlite_svr;
 --Testcase 136:
 CREATE FOREIGN TABLE noprimary(a int, b text) SERVER sqlite_svr;
--- updatable option test (github pull 59)
+--Testcase 137:
 CREATE FOREIGN TABLE RO_RW_test(i int OPTIONS (key 'true'), a text, b float, c int) SERVER sqlite_svr;
 --Testcase 1:
 SELECT * FROM department LIMIT 10;
@@ -1355,26 +1355,6 @@ EXPLAIN (verbose, costs off) SELECT b, length(b) FROM numbers WHERE length(b) = 
    SQLite query: SELECT `a`, `b` FROM main."numbers" WHERE ((length(`b`) = 4))
 (4 rows)
 
--- Aggregates in subquery are pushed down.
---Testcase 214:
-explain (verbose, costs off)
-select count(x.a), sum(x.a) from (select a a, sum(a) b from numbers group by a, abs(a) order by 1, 2) x;
-                                                                 QUERY PLAN                                                                  
----------------------------------------------------------------------------------------------------------------------------------------------
- Aggregate
-   Output: count(numbers.a), sum(numbers.a)
-   ->  Foreign Scan
-         Output: numbers.a, (sum(numbers.a)), (abs(numbers.a))
-         SQLite query: SELECT `a`, sum(`a`), abs(`a`) FROM main."numbers" GROUP BY 1, 3 ORDER BY `a` ASC NULLS LAST, sum(`a`) ASC NULLS LAST
-(5 rows)
-
---Testcase 215:
-select count(x.a), sum(x.a) from (select a a, sum(a) b from numbers group by a, abs(a) order by 1, 2) x;
- count | sum 
--------+-----
-     3 |   7
-(1 row)
-
 --Testcase 115:
 INSERT INTO multiprimary (b,c) VALUES (99, 100);
 --Testcase 116:
@@ -1397,6 +1377,7 @@ SELECT * FROM multiprimary2;
    | 99 | 99
 (5 rows)
 
+--Testcase 214:
 ALTER FOREIGN TABLE multiprimary2 ALTER COLUMN a OPTIONS(ADD column_name 'b');
 --Testcase 118:
 SELECT * FROM multiprimary2;
@@ -1409,10 +1390,12 @@ SELECT * FROM multiprimary2;
  99 | 99 | 99
 (5 rows)
 
+--Testcase 215:
 ALTER FOREIGN TABLE multiprimary2 ALTER COLUMN b OPTIONS (column_name 'nosuch column');
 --Testcase 119:
 SELECT * FROM multiprimary2;
-ERROR:  SQL error during prepare: no such column: nosuch column SELECT `b`, `nosuch column`, `b` FROM main."multiprimary"
+ERROR:  SQL error during prepare: no such column: nosuch column
+CONTEXT:  SELECT `b`, `nosuch column`, `b` FROM main."multiprimary"
 --Testcase 140:
 EXPLAIN (VERBOSE) SELECT * FROM multiprimary2;
                                    QUERY PLAN                                   
@@ -1424,7 +1407,8 @@ EXPLAIN (VERBOSE) SELECT * FROM multiprimary2;
 
 --Testcase 120:
 SELECT a FROM multiprimary2 WHERE b = 1;
-ERROR:  SQL error during prepare: no such column: nosuch column SELECT `b` FROM main."multiprimary" WHERE ((`nosuch column` = 1))
+ERROR:  SQL error during prepare: no such column: nosuch column
+CONTEXT:  SELECT `b` FROM main."multiprimary" WHERE ((`nosuch column` = 1))
 --Testcase 141:
 CREATE FOREIGN TABLE columntest(a int OPTIONS(column_name 'a a', key 'true'), "b b" int  OPTIONS(key 'true'), c int OPTIONS(column_name 'c c')) SERVER sqlite_svr;
 --Testcase 121:
@@ -1462,16 +1446,45 @@ SELECT * FROM noprimary;
 --get version
 --Testcase 153:
 \df sqlite*
-                                            List of functions
- Schema |            Name            | Result data type |           Argument data types           | Type 
---------+----------------------------+------------------+-----------------------------------------+------
- public | sqlite_fdw_disconnect      | boolean          | text                                    | func
- public | sqlite_fdw_disconnect_all  | boolean          |                                         | func
- public | sqlite_fdw_get_connections | SETOF record     | OUT server_name text, OUT valid boolean | func
- public | sqlite_fdw_handler         | fdw_handler      |                                         | func
- public | sqlite_fdw_validator       | void             | text[], oid                             | func
- public | sqlite_fdw_version         | integer          |                                         | func
-(6 rows)
+                                                                                                                                           List of functions
+ Schema |                 Name                 |                                                           Result data type                                                           |                                           Argument data types                                            | Type 
+--------+--------------------------------------+--------------------------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------+------
+ public | sqlite_fdw_db_application_id         | integer                                                                                                                              | server name, schema name DEFAULT 'main'::name                                                            | func
+ public | sqlite_fdw_db_attach                 | integer                                                                                                                              | server name, sqlite_db_string text, sqlite_db_alias name, integrity_check_mode text DEFAULT 'full'::text | func
+ public | sqlite_fdw_db_auto_vacuum            | character varying                                                                                                                    | server name, schema name DEFAULT 'main'::name                                                            | func
+ public | sqlite_fdw_db_cache_size             | integer                                                                                                                              | server name, schema name DEFAULT 'main'::name                                                            | func
+ public | sqlite_fdw_db_cache_spill            | integer                                                                                                                              | server name, schema name DEFAULT 'main'::name                                                            | func
+ public | sqlite_fdw_db_detach                 | void                                                                                                                                 | server name, sqlite_db_alias name                                                                        | func
+ public | sqlite_fdw_db_encoding               | character varying                                                                                                                    | server name                                                                                              | func
+ public | sqlite_fdw_db_exclusive_locking_mode | boolean                                                                                                                              | server name, schema name DEFAULT 'main'::name                                                            | func
+ public | sqlite_fdw_db_fkeys                  | boolean                                                                                                                              | server name, schema name DEFAULT 'main'::name                                                            | func
+ public | sqlite_fdw_db_fkeys_check            | TABLE(source_table name, rowid bigint, fk_from_table name, i integer)                                                                | server name, "table" name, schema name DEFAULT 'main'::name                                              | func
+ public | sqlite_fdw_db_fkeys_list             | TABLE(i integer, j integer, source_table name, column_name name, "constraint" name, onupd text, ondel text, f8 text)                 | server name, "table" name, schema name DEFAULT 'main'::name                                              | func
+ public | sqlite_fdw_db_journal_mode           | character varying                                                                                                                    | server name, schema name DEFAULT 'main'::name                                                            | func
+ public | sqlite_fdw_db_journal_size_limit     | integer                                                                                                                              | server name, schema name DEFAULT 'main'::name                                                            | func
+ public | sqlite_fdw_db_list                   | TABLE(sqlite_id integer, alias name, file text, readonly boolean, txn character varying)                                             | server name                                                                                              | func
+ public | sqlite_fdw_db_max_page_count         | integer                                                                                                                              | server name, schema name DEFAULT 'main'::name                                                            | func
+ public | sqlite_fdw_db_page_size              | integer                                                                                                                              | server name, schema name DEFAULT 'main'::name                                                            | func
+ public | sqlite_fdw_db_schema_version         | integer                                                                                                                              | server name, schema name DEFAULT 'main'::name                                                            | func
+ public | sqlite_fdw_db_secure_delete          | integer                                                                                                                              | server name, schema name DEFAULT 'main'::name                                                            | func
+ public | sqlite_fdw_db_synchronous_mode       | character varying                                                                                                                    | server name, schema name DEFAULT 'main'::name                                                            | func
+ public | sqlite_fdw_db_temp_store             | character varying                                                                                                                    | server name, schema name DEFAULT 'main'::name                                                            | func
+ public | sqlite_fdw_db_tmp_directory          | text                                                                                                                                 | server name, schema name DEFAULT 'main'::name                                                            | func
+ public | sqlite_fdw_db_user_version           | integer                                                                                                                              | server name, schema name DEFAULT 'main'::name                                                            | func
+ public | sqlite_fdw_db_wal_checkpoint         | TABLE(blocked boolean, mod_pages_in_wal integer, pages_suc_wr_to_db integer)                                                         | server name, schema name DEFAULT 'main'::name                                                            | func
+ public | sqlite_fdw_disconnect                | boolean                                                                                                                              | name                                                                                                     | func
+ public | sqlite_fdw_disconnect_all            | boolean                                                                                                                              |                                                                                                          | func
+ public | sqlite_fdw_get_connections           | SETOF record                                                                                                                         | OUT server_name text, OUT valid boolean                                                                  | func
+ public | sqlite_fdw_handler                   | fdw_handler                                                                                                                          |                                                                                                          | func
+ public | sqlite_fdw_index_list                | TABLE(sqlite_id integer, index_name name, "unique" boolean, source character varying, partial boolean)                               | server name, "table" name, schema name DEFAULT 'main'::name                                              | func
+ public | sqlite_fdw_mem                       | bigint                                                                                                                               |                                                                                                          | func
+ public | sqlite_fdw_rel_list                  | TABLE(schema name, "table" name, type text, ncol integer, no_rowid boolean, strict boolean)                                          | server name, schema name DEFAULT 'main'::name                                                            | func
+ public | sqlite_fdw_sqlite_code_source        | text                                                                                                                                 |                                                                                                          | func
+ public | sqlite_fdw_sqlite_version            | integer                                                                                                                              |                                                                                                          | func
+ public | sqlite_fdw_table_info                | TABLE(sqlite_id integer, "column" name, type text, "notnull" boolean, default_value text, pk boolean, column_mode character varying) | server name, "table" name, schema name DEFAULT 'main'::name                                              | func
+ public | sqlite_fdw_validator                 | void                                                                                                                                 | text[], oid                                                                                              | func
+ public | sqlite_fdw_version                   | integer                                                                                                                              |                                                                                                          | func
+(35 rows)
 
 --Testcase 154:
 SELECT * FROM public.sqlite_fdw_version();
@@ -1555,6 +1568,37 @@ SELECT * FROM noprimary where b in ('Test''s', 'Test');
  4 | Test's
  5 | Test
 (2 rows)
+
+-- INSERT/UPDATE whole row with generated column
+--Testcase 216:
+CREATE FOREIGN TABLE grem1_1 (
+  a int generated always as (0) stored)
+  SERVER sqlite_svr OPTIONS(table 'grem1_1');
+--Testcase 217:
+INSERT INTO grem1_1 DEFAULT VALUES;
+--Testcase 218:
+SELECT * FROM grem1_1;
+ a 
+---
+ 0
+(1 row)
+
+--Testcase 219:
+CREATE FOREIGN TABLE grem1_2 (
+  a int generated always as (0) stored,
+  b int generated always as (1) stored,
+  c int generated always as (2) stored,
+  d int generated always as (3) stored)
+  SERVER sqlite_svr OPTIONS(table 'grem1_2');
+--Testcase 220:
+INSERT INTO grem1_2 DEFAULT VALUES;
+ERROR:  SQL error during prepare: cannot INSERT into generated column "b"
+CONTEXT:  INSERT INTO main."grem1_2"(`a`, `b`, `c`, `d`) VALUES (?, ?, ?, ?)
+--Testcase 221:
+SELECT * FROM grem1_2;
+ a | b | c | d 
+---+---+---+---
+(0 rows)
 
 -- Executable test case for pushdown CASE expressions (results)
 --Testcase 224:
@@ -1703,29 +1747,36 @@ DELETE FROM case_exp;
 -- force_RO true    SERVER true    TABLE false
 -- force_RO default SERVER default TABLE default
 --Testcase 235:
-INSERT INTO RO_RW_test (i, a, b, c) VALUES (2, 'B', 3.01, 1); -- OK
+SELECT * FROM sqlite_fdw_db_list('sqlite_svr');
+ sqlite_id | alias |              file              | readonly | txn  
+-----------+-------+--------------------------------+----------+------
+         0 | main  | /tmp/sqlite_fdw_test/common.db | f        | none
+(1 row)
+
 --Testcase 236:
-UPDATE RO_RW_test SET a='C' WHERE i=2; -- OK
+INSERT INTO RO_RW_test (i, a, b, c) VALUES (2, 'B', 3.01, 1); -- OK
 --Testcase 237:
+UPDATE RO_RW_test SET a='C' WHERE i=2; -- OK
+--Testcase 238:
 DELETE FROM RO_RW_test WHERE i=2; -- OK
 -- force_RO default SERVER true TABLE default
---Testcase 238:
-ALTER SERVER sqlite_svr OPTIONS (ADD updatable 'true');
 --Testcase 239:
-INSERT INTO RO_RW_test (i, a, b, c) VALUES (3, 'D', 5.02, 8); -- OK
+ALTER SERVER sqlite_svr OPTIONS (ADD updatable 'true');
 --Testcase 240:
-UPDATE RO_RW_test SET a='E' WHERE i=3; -- OK
+INSERT INTO RO_RW_test (i, a, b, c) VALUES (3, 'D', 5.02, 8); -- OK
 --Testcase 241:
-DELETE FROM RO_RW_test WHERE i=3; -- OK
+UPDATE RO_RW_test SET a='E' WHERE i=3; -- OK
 --Testcase 242:
+DELETE FROM RO_RW_test WHERE i=3; -- OK
+--Testcase 243:
 INSERT INTO RO_RW_test (i, a, b, c) VALUES (4, 'F', 0.005, 5); -- OK
 -- force_RO default SERVER false TABLE default
---Testcase 243:
-ALTER SERVER sqlite_svr OPTIONS (SET updatable 'false');
 --Testcase 244:
+ALTER SERVER sqlite_svr OPTIONS (SET updatable 'false');
+--Testcase 245:
 INSERT INTO RO_RW_test (i, a, b, c) VALUES (5, 'H', 0.03, 7); -- ERR
 ERROR:  foreign table "ro_rw_test" does not allow inserts
---Testcase 245:
+--Testcase 246:
 UPDATE RO_RW_test SET a='E' WHERE i=4; -- ERR
 ERROR:  foreign table "ro_rw_test" does not allow updates
 --Testcase 246:
@@ -1828,108 +1879,115 @@ DELETE FROM RO_RW_test;
 ALTER SERVER sqlite_svr OPTIONS (ADD force_readonly 'false');
 -- force_RO false SERVER default TABLE default
 --Testcase 279:
-INSERT INTO RO_RW_test (i, a, b, c) VALUES (2, 'B', 3.01, 1); -- OK
+SELECT * FROM sqlite_fdw_db_list('sqlite_svr');
+ sqlite_id | alias |              file              | readonly | txn  
+-----------+-------+--------------------------------+----------+------
+         0 | main  | /tmp/sqlite_fdw_test/common.db | f        | none
+(1 row)
+
 --Testcase 280:
-UPDATE RO_RW_test SET a='C' WHERE i=2; -- OK
+INSERT INTO RO_RW_test (i, a, b, c) VALUES (2, 'B', 3.01, 1); -- OK
 --Testcase 281:
+UPDATE RO_RW_test SET a='C' WHERE i=2; -- OK
+--Testcase 282:
 DELETE FROM RO_RW_test WHERE i=2; -- OK
 -- force_RO false SERVER true TABLE default
---Testcase 282:
-ALTER SERVER sqlite_svr OPTIONS (ADD updatable 'true');
 --Testcase 283:
-INSERT INTO RO_RW_test (i, a, b, c) VALUES (3, 'D', 5.02, 8); -- OK
+ALTER SERVER sqlite_svr OPTIONS (ADD updatable 'true');
 --Testcase 284:
-UPDATE RO_RW_test SET a='E' WHERE i=3; -- OK
+INSERT INTO RO_RW_test (i, a, b, c) VALUES (3, 'D', 5.02, 8); -- OK
 --Testcase 285:
-DELETE FROM RO_RW_test WHERE i=3; -- OK
+UPDATE RO_RW_test SET a='E' WHERE i=3; -- OK
 --Testcase 286:
+DELETE FROM RO_RW_test WHERE i=3; -- OK
+--Testcase 287:
 INSERT INTO RO_RW_test (i, a, b, c) VALUES (4, 'F', 0.005, 5); -- OK
 -- force_RO false SERVER false TABLE default
---Testcase 287:
-ALTER SERVER sqlite_svr OPTIONS (SET updatable 'false');
 --Testcase 288:
+ALTER SERVER sqlite_svr OPTIONS (SET updatable 'false');
+--Testcase 289:
 INSERT INTO RO_RW_test (i, a, b, c) VALUES (5, 'H', 0.03, 7); -- ERR
 ERROR:  foreign table "ro_rw_test" does not allow inserts
---Testcase 289:
+--Testcase 290:
 UPDATE RO_RW_test SET a='E' WHERE i=4; -- ERR
 ERROR:  foreign table "ro_rw_test" does not allow updates
---Testcase 290:
+--Testcase 291:
 DELETE FROM RO_RW_test WHERE i=4; -- ERR
 ERROR:  foreign table "ro_rw_test" does not allow deletes
 -- force_RO false SERVER default TABLE true
---Testcase 291:
-ALTER SERVER sqlite_svr OPTIONS (DROP updatable);
 --Testcase 292:
-ALTER FOREIGN TABLE RO_RW_test OPTIONS (ADD updatable 'true');
+ALTER SERVER sqlite_svr OPTIONS (DROP updatable);
 --Testcase 293:
-INSERT INTO RO_RW_test (i, a, b, c) VALUES (6, 'I', 1.403, 2); -- OK
+ALTER FOREIGN TABLE RO_RW_test OPTIONS (ADD updatable 'true');
 --Testcase 294:
-UPDATE RO_RW_test SET a='J' WHERE i=6; -- OK
+INSERT INTO RO_RW_test (i, a, b, c) VALUES (6, 'I', 1.403, 2); -- OK
 --Testcase 295:
+UPDATE RO_RW_test SET a='J' WHERE i=6; -- OK
+--Testcase 296:
 DELETE FROM RO_RW_test WHERE i=6; -- OK
 -- force_RO false SERVER default TABLE false
---Testcase 296:
-ALTER FOREIGN TABLE RO_RW_test OPTIONS (SET updatable 'false');
 --Testcase 297:
+ALTER FOREIGN TABLE RO_RW_test OPTIONS (SET updatable 'false');
+--Testcase 298:
 INSERT INTO RO_RW_test (i, a, b, c) VALUES (7, 'K', 2.01, 4); -- ERR
 ERROR:  foreign table "ro_rw_test" does not allow inserts
---Testcase 298:
+--Testcase 299:
 UPDATE RO_RW_test SET a='L' WHERE i=4; -- ERR
 ERROR:  foreign table "ro_rw_test" does not allow updates
---Testcase 299:
+--Testcase 300:
 DELETE FROM RO_RW_test WHERE i=4; -- ERR
 ERROR:  foreign table "ro_rw_test" does not allow deletes
 -- force_RO false SERVER true TABLE true
---Testcase 300:
-ALTER SERVER sqlite_svr OPTIONS (ADD updatable 'true');
 --Testcase 301:
-ALTER FOREIGN TABLE RO_RW_test OPTIONS (SET updatable 'true');
+ALTER SERVER sqlite_svr OPTIONS (ADD updatable 'true');
 --Testcase 302:
-INSERT INTO RO_RW_test (i, a, b, c) VALUES (8, 'M', 5.02, 8); -- OK
+ALTER FOREIGN TABLE RO_RW_test OPTIONS (SET updatable 'true');
 --Testcase 303:
-UPDATE RO_RW_test SET a='N' WHERE i=8; -- OK
+INSERT INTO RO_RW_test (i, a, b, c) VALUES (8, 'M', 5.02, 8); -- OK
 --Testcase 304:
-DELETE FROM RO_RW_test WHERE i=8; -- OK
+UPDATE RO_RW_test SET a='N' WHERE i=8; -- OK
 --Testcase 305:
+DELETE FROM RO_RW_test WHERE i=8; -- OK
+--Testcase 306:
 INSERT INTO RO_RW_test (i, a, b, c) VALUES (9, 'O', 3.21, 9); -- OK
 -- force_RO false SERVER false TABLE true
---Testcase 306:
+--Testcase 307
 ALTER SERVER sqlite_svr OPTIONS (SET updatable 'false');
---Testcase 307:
+--Testcase 308
 INSERT INTO RO_RW_test (i, a, b, c) VALUES (10, 'P', 4.15, 1); -- OK
---Testcase 308:
-UPDATE RO_RW_test SET a='Q' WHERE i=9; -- OK
 --Testcase 309:
+UPDATE RO_RW_test SET a='Q' WHERE i=9; -- OK
+--Testcase 310:
 DELETE FROM RO_RW_test WHERE i=9; -- OK
 -- force_RO false SERVER false TABLE false
---Testcase 310:
-ALTER FOREIGN TABLE RO_RW_test OPTIONS (SET updatable 'false');
 --Testcase 311:
+ALTER FOREIGN TABLE RO_RW_test OPTIONS (SET updatable 'false');
+--Testcase 312:
 INSERT INTO RO_RW_test (i, a, b, c) VALUES (11, 'Q', 2.27, 5); -- ERR
 ERROR:  foreign table "ro_rw_test" does not allow inserts
---Testcase 312:
+--Testcase 313:
 UPDATE RO_RW_test SET a='S' WHERE i=9; -- ERR
 ERROR:  foreign table "ro_rw_test" does not allow updates
---Testcase 313:
+--Testcase 314:
 DELETE FROM RO_RW_test WHERE i=9; -- ERR
 ERROR:  foreign table "ro_rw_test" does not allow deletes
 -- force_RO false SERVER true TABLE false
---Testcase 314:
-ALTER SERVER sqlite_svr OPTIONS (SET updatable 'true');
 --Testcase 315:
+ALTER SERVER sqlite_svr OPTIONS (SET updatable 'true');
+--Testcase 316:
 INSERT INTO RO_RW_test (i, a, b, c) VALUES (12, 'R', 6.18, 11); -- ERR
 ERROR:  foreign table "ro_rw_test" does not allow inserts
---Testcase 316:
+--Testcase 317:
 UPDATE RO_RW_test SET a='T' WHERE i=9; -- ERR
 ERROR:  foreign table "ro_rw_test" does not allow updates
---Testcase 317:
+--Testcase 318:
 DELETE FROM RO_RW_test WHERE i=9; -- ERR
 ERROR:  foreign table "ro_rw_test" does not allow deletes
---Testcase 318:
-ALTER SERVER sqlite_svr OPTIONS (DROP updatable);
 --Testcase 319:
-ALTER FOREIGN TABLE RO_RW_test OPTIONS (DROP updatable);
+ALTER SERVER sqlite_svr OPTIONS (DROP updatable);
 --Testcase 320:
+ALTER FOREIGN TABLE RO_RW_test OPTIONS (DROP updatable);
+--Testcase 321:
 SELECT * FROM RO_RW_test ORDER BY i;
  i  | a |   b   | c 
 ----+---+-------+---
@@ -1937,150 +1995,375 @@ SELECT * FROM RO_RW_test ORDER BY i;
  10 | P |  4.15 | 1
 (2 rows)
 
---Testcase 321:
-DELETE FROM RO_RW_test;
 --Testcase 322:
+DELETE FROM RO_RW_test;
+--Testcase 323
 ALTER SERVER sqlite_svr OPTIONS (SET force_readonly 'true');
 -- force_RO true SERVER default TABLE default
---Testcase 323:
+--Testcase 324:
+SELECT * FROM sqlite_fdw_db_list('sqlite_svr');
+ sqlite_id | alias |              file              | readonly | txn  
+-----------+-------+--------------------------------+----------+------
+         0 | main  | /tmp/sqlite_fdw_test/common.db | t        | none
+(1 row)
+
+--Testcase 325:
 INSERT INTO RO_RW_test (i, a, b, c) VALUES (2, 'B', 3.01, 1); -- ERR
 ERROR:  foreign table "ro_rw_test" does not allow inserts
---Testcase 324:
+--Testcase 326:
 UPDATE RO_RW_test SET a='C' WHERE i=2; -- ERR
 ERROR:  foreign table "ro_rw_test" does not allow updates
---Testcase 325:
+--Testcase 327:
 DELETE FROM RO_RW_test WHERE i=2; -- ERR
 ERROR:  foreign table "ro_rw_test" does not allow deletes
 -- force_RO true SERVER true TABLE default
---Testcase 326:
+--Testcase 328:
 ALTER SERVER sqlite_svr OPTIONS (ADD updatable 'true');
---Testcase 327:
+--Testcase 329:
 INSERT INTO RO_RW_test (i, a, b, c) VALUES (3, 'D', 5.02, 8); -- ERR
 ERROR:  foreign table "ro_rw_test" does not allow inserts
---Testcase 328:
+--Testcase 330:
 UPDATE RO_RW_test SET a='E' WHERE i=3; -- ERR
 ERROR:  foreign table "ro_rw_test" does not allow updates
---Testcase 329:
+--Testcase 331:
 DELETE FROM RO_RW_test WHERE i=3; -- ERR
 ERROR:  foreign table "ro_rw_test" does not allow deletes
---Testcase 330:
+--Testcase 332:
 INSERT INTO RO_RW_test (i, a, b, c) VALUES (4, 'F', 0.005, 5); -- ERR
 ERROR:  foreign table "ro_rw_test" does not allow inserts
 -- force_RO true SERVER false TABLE default
---Testcase 331:
+--Testcase 333:
 ALTER SERVER sqlite_svr OPTIONS (SET updatable 'false');
---Testcase 332:
+--Testcase 334:
 INSERT INTO RO_RW_test (i, a, b, c) VALUES (5, 'H', 0.03, 7); -- ERR
 ERROR:  foreign table "ro_rw_test" does not allow inserts
---Testcase 333:
+--Testcase 335:
 UPDATE RO_RW_test SET a='E' WHERE i=4; -- ERR
 ERROR:  foreign table "ro_rw_test" does not allow updates
---Testcase 334:
+--Testcase 336:
 DELETE FROM RO_RW_test WHERE i=4; -- ERR
 ERROR:  foreign table "ro_rw_test" does not allow deletes
 -- force_RO true SERVER default TABLE true
---Testcase 335:
-ALTER SERVER sqlite_svr OPTIONS (DROP updatable);
---Testcase 336:
-ALTER FOREIGN TABLE RO_RW_test OPTIONS (ADD updatable 'true');
 --Testcase 337:
+ALTER SERVER sqlite_svr OPTIONS (DROP updatable);
+--Testcase 338:
+ALTER FOREIGN TABLE RO_RW_test OPTIONS (ADD updatable 'true');
+--Testcase 339:
 INSERT INTO RO_RW_test (i, a, b, c) VALUES (6, 'I', 1.403, 2); -- ERR
 ERROR:  foreign table "ro_rw_test" does not allow inserts
---Testcase 338:
+--Testcase 340:
 UPDATE RO_RW_test SET a='J' WHERE i=6; -- ERR
 ERROR:  foreign table "ro_rw_test" does not allow updates
---Testcase 339:
+--Testcase 341:
 DELETE FROM RO_RW_test WHERE i=6; -- ERR
 ERROR:  foreign table "ro_rw_test" does not allow deletes
 -- force_RO true SERVER default TABLE false
---Testcase 340:
+--Testcase 342:
 ALTER FOREIGN TABLE RO_RW_test OPTIONS (SET updatable 'false');
---Testcase 341:
+--Testcase 343:
 INSERT INTO RO_RW_test (i, a, b, c) VALUES (7, 'K', 2.01, 4); -- ERR
 ERROR:  foreign table "ro_rw_test" does not allow inserts
---Testcase 342:
+--Testcase 344:
 UPDATE RO_RW_test SET a='L' WHERE i=4; -- ERR
 ERROR:  foreign table "ro_rw_test" does not allow updates
---Testcase 343:
+--Testcase 345:
 DELETE FROM RO_RW_test WHERE i=4; -- ERR
 ERROR:  foreign table "ro_rw_test" does not allow deletes
 -- force_RO true SERVER true TABLE true
---Testcase 344:
-ALTER SERVER sqlite_svr OPTIONS (ADD updatable 'true'); -- ERR
---Testcase 345:
-ALTER FOREIGN TABLE RO_RW_test OPTIONS (SET updatable 'true'); -- ERR
 --Testcase 346:
+ALTER SERVER sqlite_svr OPTIONS (ADD updatable 'true'); -- ERR
+--Testcase 347:
+ALTER FOREIGN TABLE RO_RW_test OPTIONS (SET updatable 'true'); -- ERR
+--Testcase 348:
 INSERT INTO RO_RW_test (i, a, b, c) VALUES (8, 'M', 5.02, 8); -- ERR
 ERROR:  foreign table "ro_rw_test" does not allow inserts
---Testcase 347:
+--Testcase 349:
 UPDATE RO_RW_test SET a='N' WHERE i=8; -- OK
 ERROR:  foreign table "ro_rw_test" does not allow updates
---Testcase 348:
+--Testcase 350:
 DELETE FROM RO_RW_test WHERE i=8; -- OK
 ERROR:  foreign table "ro_rw_test" does not allow deletes
---Testcase 349:
+--Testcase 351:
 INSERT INTO RO_RW_test (i, a, b, c) VALUES (9, 'O', 3.21, 9); -- ERR
 ERROR:  foreign table "ro_rw_test" does not allow inserts
 -- force_RO true SERVER false TABLE true
---Testcase 350:
+--Testcase 352:
 ALTER SERVER sqlite_svr OPTIONS (SET updatable 'false');
---Testcase 351:
+--Testcase 353:
 INSERT INTO RO_RW_test (i, a, b, c) VALUES (10, 'P', 4.15, 1); -- ERR
 ERROR:  foreign table "ro_rw_test" does not allow inserts
---Testcase 352:
+--Testcase 354:
 UPDATE RO_RW_test SET a='Q' WHERE i=9; -- ERR
 ERROR:  foreign table "ro_rw_test" does not allow updates
---Testcase 353:
+--Testcase 355:
 DELETE FROM RO_RW_test WHERE i=9; -- ERR
 ERROR:  foreign table "ro_rw_test" does not allow deletes
 -- force_RO true SERVER false TABLE false
---Testcase 354:
+--Testcase 356:
 ALTER FOREIGN TABLE RO_RW_test OPTIONS (SET updatable 'false');
---Testcase 355:
+--Testcase 357:
 INSERT INTO RO_RW_test (i, a, b, c) VALUES (11, 'Q', 2.27, 5); -- ERR
 ERROR:  foreign table "ro_rw_test" does not allow inserts
---Testcase 356:
+--Testcase 358:
 UPDATE RO_RW_test SET a='S' WHERE i=9; -- ERR
 ERROR:  foreign table "ro_rw_test" does not allow updates
---Testcase 357:
+--Testcase 359:
 DELETE FROM RO_RW_test WHERE i=9; -- ERR
 ERROR:  foreign table "ro_rw_test" does not allow deletes
 -- force_RO true SERVER true TABLE false
---Testcase 358:
+--Testcase 360:
 ALTER SERVER sqlite_svr OPTIONS (SET updatable 'true');
---Testcase 359:
+--Testcase 361:
 INSERT INTO RO_RW_test (i, a, b, c) VALUES (12, 'R', 6.18, 11); -- ERR
 ERROR:  foreign table "ro_rw_test" does not allow inserts
---Testcase 360:
+--Testcase 362:
 UPDATE RO_RW_test SET a='T' WHERE i=9; -- ERR
 ERROR:  foreign table "ro_rw_test" does not allow updates
---Testcase 361:
+--Testcase 363:
 DELETE FROM RO_RW_test WHERE i=9; -- ERR
 ERROR:  foreign table "ro_rw_test" does not allow deletes
---Testcase 362:
-ALTER SERVER sqlite_svr OPTIONS (DROP updatable);
---Testcase 363:
-ALTER FOREIGN TABLE RO_RW_test OPTIONS (DROP updatable);
 --Testcase 364:
-ALTER SERVER sqlite_svr OPTIONS (DROP force_readonly);
+ALTER SERVER sqlite_svr OPTIONS (DROP updatable);
 --Testcase 365:
+ALTER FOREIGN TABLE RO_RW_test OPTIONS (DROP updatable);
+--Testcase 366:
+ALTER SERVER sqlite_svr OPTIONS (DROP force_readonly);
+--Testcase 367:
+SELECT * FROM sqlite_fdw_db_list('sqlite_svr');
+ sqlite_id | alias |              file              | readonly | txn  
+-----------+-------+--------------------------------+----------+------
+         0 | main  | /tmp/sqlite_fdw_test/common.db | f        | none
+(1 row)
+
+--Testcase 368:
 SELECT * FROM RO_RW_test ORDER BY i;
  i | a | b | c 
 ---+---+---+---
 (0 rows)
 
---Testcase 366:
+--Testcase 369:
 DROP FOREIGN TABLE RO_RW_test;
 -- End of RO/RW test
 --Bind error message test for some unsupported data type
---Testcase 366:
+--Testcase 370:
 ALTER FOREIGN TABLE numbers ALTER COLUMN b TYPE tsquery;
---Testcase 367:
+--Testcase 371:
 INSERT INTO numbers VALUES(8,'fat & (rat | cat)');
 ERROR:  cannot convert constant value to Sqlite value
 HINT:  Constant value data type: "tsquery" in column "b"
---Testcase 368:
+--Testcase 372:
 ALTER FOREIGN TABLE numbers ALTER COLUMN b TYPE varchar(255);
+--Testcase 373:
+SELECT sqlite_fdw_db_encoding('sqlite_svr');
+ sqlite_fdw_db_encoding 
+------------------------
+ UTF-8
+(1 row)
+
+--Testcase 374:
+SELECT sqlite_fdw_db_journal_mode('sqlite_svr') jm;
+   jm   
+--------
+ delete
+(1 row)
+
+--Testcase 375:
+SELECT sqlite_fdw_db_secure_delete('sqlite_svr') sd;
+ sd 
+----
+  1
+(1 row)
+
+--Testcase 376:
+SELECT sqlite_fdw_db_page_size('sqlite_svr') ps_b;
+ ps_b 
+------
+ 4096
+(1 row)
+
+--Testcase 377:
+SELECT sqlite_fdw_db_exclusive_locking_mode('sqlite_svr') elm;
+ elm 
+-----
+ f
+(1 row)
+
+--Testcase 378:
+SELECT sqlite_fdw_db_auto_vacuum('sqlite_svr') av;
+  av  
+------
+ none
+(1 row)
+
+--Testcase 379:
+SELECT sqlite_fdw_db_temp_store('sqlite_svr') tsm;
+   tsm   
+---------
+ default
+(1 row)
+
+--Testcase 380:
+SELECT sqlite_fdw_db_synchronous_mode('sqlite_svr') sm;
+   sm   
+--------
+ normal
+(1 row)
+
+--Testcase 381:
+SELECT * FROM sqlite_fdw_table_info('sqlite_svr', 'type_UUID+');
+ sqlite_id | column | type | notnull | default_value | pk | column_mode 
+-----------+--------+------+---------+---------------+----+-------------
+         0 | i      | INT  | f       |               | f  | normal
+         1 | u      | uuid | f       |               | f  | normal
+         2 | t      |      | f       |               | f  | normal
+         3 | l      |      | f       |               | f  | normal
+(4 rows)
+
+--Testcase 382:
+SELECT * FROM sqlite_fdw_table_info('sqlite_svr', 'type_UUID');
+ sqlite_id | column | type | notnull | default_value | pk | column_mode 
+-----------+--------+------+---------+---------------+----+-------------
+         0 | i      | INT  | f       |               | f  | normal
+         1 | u      | uuid | f       |               | f  | normal
+(2 rows)
+
+--Testcase 383:
+SELECT * FROM sqlite_fdw_table_info('sqlite_svr', 'BitT');
+ sqlite_id | column |      type      | notnull | default_value | pk | column_mode 
+-----------+--------+----------------+---------+---------------+----+-------------
+         0 | p      | INTEGER        | f       |               | t  | normal
+         1 | a      | BIT(3)         | f       |               | f  | normal
+         2 | b      | BIT VARYING(5) | f       |               | f  | normal
+(3 rows)
+
+--Testcase 384:
+SELECT * FROM sqlite_fdw_table_info('sqlite_svr', 'strict');
+ sqlite_id | column | type | notnull | default_value | pk | column_mode 
+-----------+--------+------+---------+---------------+----+-------------
+         0 | i      | INT  | t       |               | t  | normal
+         1 | t      | TEXT | f       |               | f  | normal
+         2 | b      | REAL | t       |               | f  | normal
+         3 | c      | BLOB | f       | X'ADCD'       | f  | normal
+         4 | a      | ANY  | f       | 12            | f  | normal
+(5 rows)
+
+--Testcase 385:
+SELECT * FROM sqlite_fdw_table_info('sqlite_svr', 'norowid');
+ sqlite_id | column | type | notnull | default_value | pk | column_mode 
+-----------+--------+------+---------+---------------+----+-------------
+         0 | k      | TEXT | t       |               | t  | normal
+         1 | t      | TEXT | f       |               | f  | normal
+         2 | b      | REAL | t       |               | f  | normal
+         3 | c      | BLOB | f       | X'ADCD'       | f  | normal
+(4 rows)
+
+--Testcase 386:
+SELECT * FROM sqlite_fdw_rel_list('sqlite_svr');
+ schema |       table       |  type   | ncol | no_rowid | strict 
+--------+-------------------+---------+------+----------+--------
+ main   | sqlite_stat1      | table   |    3 | f        | f
+ main   | fk_s_artist       | table   |    2 | f        | f
+ main   | type_BOOLEAN_oper | table   |    5 | f        | f
+ main   | Unicode data      | table   |    2 | f        | f
+ main   | RO_RW_test        | table   |    4 | f        | f
+ main   | fts_table_config  | shadow  |    2 | t        | f
+ main   | fts_table_idx     | shadow  |    3 | t        | f
+ main   | fts_table_data    | shadow  |    2 | f        | f
+ main   | A a               | table   |    1 | f        | f
+ main   | shorty            | table   |    2 | f        | f
+ main   | noprimary         | table   |    2 | f        | f
+ main   | columntest        | table   |    3 | f        | f
+ main   | fts_table_docsize | shadow  |    2 | f        | f
+ main   | fts_table         | virtual |    4 | f        | f
+ main   | t                 | table   |    2 | f        | f
+ main   | department        | table   |    2 | f        | f
+ main   | type_BIT          | table   |    2 | f        | f
+ main   | type_TIME         | table   |    1 | f        | f
+ main   | employee          | table   |    3 | f        | f
+ main   | type_BOOLEANpk    | table   |    1 | f        | f
+ main   | grem1_1           | table   |    2 | f        | f
+ main   | fk_d_track        | table   |    3 | f        | f
+ main   | type_UUID         | table   |    2 | f        | f
+ main   | case_exp          | table   |    3 | f        | f
+ main   | type_BLOB         | table   |    1 | f        | f
+ main   | sqlite_schema     | table   |    5 | f        | f
+ main   | strict            | table   |    5 | f        | t
+ main   | type_VARBIT       | table   |    2 | f        | f
+ main   | limittest         | table   |    3 | f        | f
+ main   | type_SINT         | table   |    1 | f        | f
+ main   | grem1_2           | table   |    4 | f        | f
+ main   | norowid           | table   |    4 | t        | f
+ main   | typetest          | table   |    6 | f        | f
+ main   | type_TEXT         | table   |    1 | f        | f
+ main   | type_STRING       | table   |    1 | f        | f
+ main   | type_VARBIT+      | view    |    4 | f        | f
+ main   | type_BOOLEAN      | table   |    2 | f        | f
+ main   | empdata           | table   |    2 | f        | f
+ main   | type_DOUBLE       | table   |    1 | f        | f
+ main   | numbers           | table   |    2 | f        | f
+ main   | type_BOOLEAN+     | view    |    4 | f        | f
+ main   | fts_table_content | shadow  |    3 | f        | f
+ main   | grem1_3           | table   |    4 | f        | f
+ main   | type_BINT         | table   |    1 | f        | f
+ main   | type_INTEGER      | table   |    1 | f        | f
+ main   | type_FLOAT        | table   |    1 | f        | f
+ main   | multiprimary      | table   |    3 | f        | f
+ main   | notype            | table   |    1 | f        | f
+ main   | type_DATE         | table   |    1 | f        | f
+ main   | type_UUIDpk       | table   |    1 | f        | f
+ main   | BitT              | table   |    3 | f        | f
+ main   | type_BYTE         | table   |    1 | f        | f
+ main   | type_TIMESTAMP    | table   |    2 | f        | f
+ main   | type_BIT+         | view    |    4 | f        | f
+ main   | type_UUID+        | view    |    4 | f        | f
+ main   | alltypetest       | table   |   24 | f        | f
+(56 rows)
+
+--Testcase 387:
+SELECT * FROM sqlite_fdw_index_list('sqlite_svr', 'Unicode data');
+ sqlite_id |           index_name            | unique | source | partial 
+-----------+---------------------------------+--------+--------+---------
+         0 | sqlite_autoindex_Unicode data_1 | t      | pk     | f
+(1 row)
+
+--Testcase 388:
+SELECT * FROM sqlite_fdw_table_info('sqlite_svr', 'fts_table');
+ sqlite_id |   column    | type | notnull | default_value | pk | column_mode 
+-----------+-------------+------+---------+---------------+----+-------------
+         0 | name        |      | f       |               | f  | normal
+         1 | description |      | f       |               | f  | normal
+         2 | fts_table   |      | f       |               | f  | hidden+vtbl
+         3 | rank        |      | f       |               | f  | hidden+vtbl
+(4 rows)
+
+--Testcase 389:
+SELECT * FROM sqlite_fdw_table_info('sqlite_svr', 'grem1_1');
+ sqlite_id | column | type | notnull | default_value | pk | column_mode 
+-----------+--------+------+---------+---------------+----+-------------
+         0 | a      | INT  | f       |               | t  | normal
+         1 | b      | INT  | f       |               | f  | gen stored
+(2 rows)
+
+--Testcase 390:
+SELECT * FROM sqlite_fdw_table_info('sqlite_svr', 'grem1_2');
+ sqlite_id | column | type | notnull | default_value | pk | column_mode 
+-----------+--------+------+---------+---------------+----+-------------
+         0 | a      | INT  | f       |               | t  | normal
+         1 | b      | INT  | f       |               | f  | gen stored
+         2 | c      | INT  | f       |               | f  | gen stored
+         3 | d      | INT  | f       |               | f  | gen stored
+(4 rows)
+
+--Testcase 391:
+SELECT * FROM sqlite_fdw_table_info('sqlite_svr', 'grem1_3');
+ sqlite_id | column | type | notnull | default_value | pk | column_mode 
+-----------+--------+------+---------+---------------+----+-------------
+         0 | e      | INT  | f       |               | t  | normal
+         1 | f      | INT  | f       |               | f  | gen dynamic
+         2 | g      | INT  | f       |               | f  | gen stored
+         3 | h      | INT  | f       |               | f  | gen dynamic
+(4 rows)
+
 --Testcase 142:
 DROP FUNCTION test_param_WHERE();
 --Testcase 143:
@@ -2101,6 +2384,10 @@ DROP FOREIGN TABLE columntest;
 DROP FOREIGN TABLE noprimary;
 --Testcase 161:
 DROP FOREIGN TABLE fts_table;
+--Testcase 222:
+DROP FOREIGN TABLE grem1_1;
+--Testcase 223:
+DROP FOREIGN TABLE grem1_2;
 --Testcase 235:
 DROP FOREIGN TABLE case_exp;
 --Testcase 151:

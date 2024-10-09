@@ -1678,199 +1678,199 @@ SELECT * FROM "type_FLOAT_INF+" WHERE f = 'NaN' ORDER BY i;
 --Testcase 330:
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT * FROM "type_FLOAT_INF+" WHERE f > '+Infinity' ORDER BY i;
-                                                                         QUERY PLAN                                                                          
--------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                          QUERY PLAN                                                                           
+---------------------------------------------------------------------------------------------------------------------------------------------------------------
  Foreign Scan on public."type_FLOAT_INF+"
    Output: i, f, t, l
-   SQLite query: SELECT `i`, sqlite_fdw_float(`f`), `t`, `l` FROM main."type_FLOAT_INF+" WHERE ((sqlite_fdw_float(`f`) > 9e999)) ORDER BY `i` ASC NULLS LAST
+   SQLite query: SELECT `i`, sqlite_fdw_float(`f`), `t`, `l` FROM main."type_FLOAT_INF+" WHERE ((sqlite_fdw_float(`f`) > 9.0e999)) ORDER BY `i` ASC NULLS LAST
 (3 rows)
 
 --Testcase 331:
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT * FROM "type_FLOAT_INF+" WHERE f < '+Infinity' ORDER BY i;
-                                                                         QUERY PLAN                                                                          
--------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                          QUERY PLAN                                                                           
+---------------------------------------------------------------------------------------------------------------------------------------------------------------
  Foreign Scan on public."type_FLOAT_INF+"
    Output: i, f, t, l
-   SQLite query: SELECT `i`, sqlite_fdw_float(`f`), `t`, `l` FROM main."type_FLOAT_INF+" WHERE ((sqlite_fdw_float(`f`) < 9e999)) ORDER BY `i` ASC NULLS LAST
+   SQLite query: SELECT `i`, sqlite_fdw_float(`f`), `t`, `l` FROM main."type_FLOAT_INF+" WHERE ((sqlite_fdw_float(`f`) < 9.0e999)) ORDER BY `i` ASC NULLS LAST
 (3 rows)
 
 --Testcase 332:
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT * FROM "type_FLOAT_INF+" WHERE f = '+Infinity' ORDER BY i;
-                                                              QUERY PLAN                                                               
----------------------------------------------------------------------------------------------------------------------------------------
+                                                               QUERY PLAN                                                                
+-----------------------------------------------------------------------------------------------------------------------------------------
  Sort
    Output: i, f, t, l
    Sort Key: "type_FLOAT_INF+".i
    ->  Foreign Scan on public."type_FLOAT_INF+"
          Output: i, f, t, l
-         SQLite query: SELECT `i`, sqlite_fdw_float(`f`), `t`, `l` FROM main."type_FLOAT_INF+" WHERE ((sqlite_fdw_float(`f`) = 9e999))
+         SQLite query: SELECT `i`, sqlite_fdw_float(`f`), `t`, `l` FROM main."type_FLOAT_INF+" WHERE ((sqlite_fdw_float(`f`) = 9.0e999))
 (6 rows)
 
 --Testcase 333:
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT * FROM "type_FLOAT_INF+" WHERE f > '+Inf' ORDER BY i;
-                                                                         QUERY PLAN                                                                          
--------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                          QUERY PLAN                                                                           
+---------------------------------------------------------------------------------------------------------------------------------------------------------------
  Foreign Scan on public."type_FLOAT_INF+"
    Output: i, f, t, l
-   SQLite query: SELECT `i`, sqlite_fdw_float(`f`), `t`, `l` FROM main."type_FLOAT_INF+" WHERE ((sqlite_fdw_float(`f`) > 9e999)) ORDER BY `i` ASC NULLS LAST
+   SQLite query: SELECT `i`, sqlite_fdw_float(`f`), `t`, `l` FROM main."type_FLOAT_INF+" WHERE ((sqlite_fdw_float(`f`) > 9.0e999)) ORDER BY `i` ASC NULLS LAST
 (3 rows)
 
 --Testcase 334:
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT * FROM "type_FLOAT_INF+" WHERE f < '+Inf' ORDER BY i;
-                                                                         QUERY PLAN                                                                          
--------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                          QUERY PLAN                                                                           
+---------------------------------------------------------------------------------------------------------------------------------------------------------------
  Foreign Scan on public."type_FLOAT_INF+"
    Output: i, f, t, l
-   SQLite query: SELECT `i`, sqlite_fdw_float(`f`), `t`, `l` FROM main."type_FLOAT_INF+" WHERE ((sqlite_fdw_float(`f`) < 9e999)) ORDER BY `i` ASC NULLS LAST
+   SQLite query: SELECT `i`, sqlite_fdw_float(`f`), `t`, `l` FROM main."type_FLOAT_INF+" WHERE ((sqlite_fdw_float(`f`) < 9.0e999)) ORDER BY `i` ASC NULLS LAST
 (3 rows)
 
 --Testcase 335:
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT * FROM "type_FLOAT_INF+" WHERE f = '+Inf' ORDER BY i;
-                                                              QUERY PLAN                                                               
----------------------------------------------------------------------------------------------------------------------------------------
+                                                               QUERY PLAN                                                                
+-----------------------------------------------------------------------------------------------------------------------------------------
  Sort
    Output: i, f, t, l
    Sort Key: "type_FLOAT_INF+".i
    ->  Foreign Scan on public."type_FLOAT_INF+"
          Output: i, f, t, l
-         SQLite query: SELECT `i`, sqlite_fdw_float(`f`), `t`, `l` FROM main."type_FLOAT_INF+" WHERE ((sqlite_fdw_float(`f`) = 9e999))
+         SQLite query: SELECT `i`, sqlite_fdw_float(`f`), `t`, `l` FROM main."type_FLOAT_INF+" WHERE ((sqlite_fdw_float(`f`) = 9.0e999))
 (6 rows)
 
 --Testcase 336:
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT * FROM "type_FLOAT_INF+" WHERE f > '-Infinity' ORDER BY i;
-                                                                           QUERY PLAN                                                                           
-----------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                            QUERY PLAN                                                                            
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Foreign Scan on public."type_FLOAT_INF+"
    Output: i, f, t, l
-   SQLite query: SELECT `i`, sqlite_fdw_float(`f`), `t`, `l` FROM main."type_FLOAT_INF+" WHERE ((sqlite_fdw_float(`f`) > (-9e999))) ORDER BY `i` ASC NULLS LAST
+   SQLite query: SELECT `i`, sqlite_fdw_float(`f`), `t`, `l` FROM main."type_FLOAT_INF+" WHERE ((sqlite_fdw_float(`f`) > (-9.0e999))) ORDER BY `i` ASC NULLS LAST
 (3 rows)
 
 --Testcase 337:
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT * FROM "type_FLOAT_INF+" WHERE f < '-Infinity' ORDER BY i;
-                                                                           QUERY PLAN                                                                           
-----------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                            QUERY PLAN                                                                            
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Foreign Scan on public."type_FLOAT_INF+"
    Output: i, f, t, l
-   SQLite query: SELECT `i`, sqlite_fdw_float(`f`), `t`, `l` FROM main."type_FLOAT_INF+" WHERE ((sqlite_fdw_float(`f`) < (-9e999))) ORDER BY `i` ASC NULLS LAST
+   SQLite query: SELECT `i`, sqlite_fdw_float(`f`), `t`, `l` FROM main."type_FLOAT_INF+" WHERE ((sqlite_fdw_float(`f`) < (-9.0e999))) ORDER BY `i` ASC NULLS LAST
 (3 rows)
 
 --Testcase 338:
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT * FROM "type_FLOAT_INF+" WHERE f = '-Infinity' ORDER BY i;
-                                                                QUERY PLAN                                                                
-------------------------------------------------------------------------------------------------------------------------------------------
+                                                                 QUERY PLAN                                                                 
+--------------------------------------------------------------------------------------------------------------------------------------------
  Sort
    Output: i, f, t, l
    Sort Key: "type_FLOAT_INF+".i
    ->  Foreign Scan on public."type_FLOAT_INF+"
          Output: i, f, t, l
-         SQLite query: SELECT `i`, sqlite_fdw_float(`f`), `t`, `l` FROM main."type_FLOAT_INF+" WHERE ((sqlite_fdw_float(`f`) = (-9e999)))
+         SQLite query: SELECT `i`, sqlite_fdw_float(`f`), `t`, `l` FROM main."type_FLOAT_INF+" WHERE ((sqlite_fdw_float(`f`) = (-9.0e999)))
 (6 rows)
 
 --Testcase 339:
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT * FROM "type_FLOAT_INF+" WHERE f > '-Inf' ORDER BY i;
-                                                                           QUERY PLAN                                                                           
-----------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                            QUERY PLAN                                                                            
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Foreign Scan on public."type_FLOAT_INF+"
    Output: i, f, t, l
-   SQLite query: SELECT `i`, sqlite_fdw_float(`f`), `t`, `l` FROM main."type_FLOAT_INF+" WHERE ((sqlite_fdw_float(`f`) > (-9e999))) ORDER BY `i` ASC NULLS LAST
+   SQLite query: SELECT `i`, sqlite_fdw_float(`f`), `t`, `l` FROM main."type_FLOAT_INF+" WHERE ((sqlite_fdw_float(`f`) > (-9.0e999))) ORDER BY `i` ASC NULLS LAST
 (3 rows)
 
 --Testcase 340:
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT * FROM "type_FLOAT_INF+" WHERE f < '-Inf' ORDER BY i;
-                                                                           QUERY PLAN                                                                           
-----------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                            QUERY PLAN                                                                            
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Foreign Scan on public."type_FLOAT_INF+"
    Output: i, f, t, l
-   SQLite query: SELECT `i`, sqlite_fdw_float(`f`), `t`, `l` FROM main."type_FLOAT_INF+" WHERE ((sqlite_fdw_float(`f`) < (-9e999))) ORDER BY `i` ASC NULLS LAST
+   SQLite query: SELECT `i`, sqlite_fdw_float(`f`), `t`, `l` FROM main."type_FLOAT_INF+" WHERE ((sqlite_fdw_float(`f`) < (-9.0e999))) ORDER BY `i` ASC NULLS LAST
 (3 rows)
 
 --Testcase 341:
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT * FROM "type_FLOAT_INF+" WHERE f = '-Inf' ORDER BY i;
-                                                                QUERY PLAN                                                                
-------------------------------------------------------------------------------------------------------------------------------------------
+                                                                 QUERY PLAN                                                                 
+--------------------------------------------------------------------------------------------------------------------------------------------
  Sort
    Output: i, f, t, l
    Sort Key: "type_FLOAT_INF+".i
    ->  Foreign Scan on public."type_FLOAT_INF+"
          Output: i, f, t, l
-         SQLite query: SELECT `i`, sqlite_fdw_float(`f`), `t`, `l` FROM main."type_FLOAT_INF+" WHERE ((sqlite_fdw_float(`f`) = (-9e999)))
+         SQLite query: SELECT `i`, sqlite_fdw_float(`f`), `t`, `l` FROM main."type_FLOAT_INF+" WHERE ((sqlite_fdw_float(`f`) = (-9.0e999)))
 (6 rows)
 
 --Testcase 342:
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT * FROM "type_FLOAT_INF+" WHERE f > 'Infinity' ORDER BY i;
-                                                                         QUERY PLAN                                                                          
--------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                          QUERY PLAN                                                                           
+---------------------------------------------------------------------------------------------------------------------------------------------------------------
  Foreign Scan on public."type_FLOAT_INF+"
    Output: i, f, t, l
-   SQLite query: SELECT `i`, sqlite_fdw_float(`f`), `t`, `l` FROM main."type_FLOAT_INF+" WHERE ((sqlite_fdw_float(`f`) > 9e999)) ORDER BY `i` ASC NULLS LAST
+   SQLite query: SELECT `i`, sqlite_fdw_float(`f`), `t`, `l` FROM main."type_FLOAT_INF+" WHERE ((sqlite_fdw_float(`f`) > 9.0e999)) ORDER BY `i` ASC NULLS LAST
 (3 rows)
 
 --Testcase 343:
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT * FROM "type_FLOAT_INF+" WHERE f < 'Infinity' ORDER BY i;
-                                                                         QUERY PLAN                                                                          
--------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                          QUERY PLAN                                                                           
+---------------------------------------------------------------------------------------------------------------------------------------------------------------
  Foreign Scan on public."type_FLOAT_INF+"
    Output: i, f, t, l
-   SQLite query: SELECT `i`, sqlite_fdw_float(`f`), `t`, `l` FROM main."type_FLOAT_INF+" WHERE ((sqlite_fdw_float(`f`) < 9e999)) ORDER BY `i` ASC NULLS LAST
+   SQLite query: SELECT `i`, sqlite_fdw_float(`f`), `t`, `l` FROM main."type_FLOAT_INF+" WHERE ((sqlite_fdw_float(`f`) < 9.0e999)) ORDER BY `i` ASC NULLS LAST
 (3 rows)
 
 --Testcase 344:
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT * FROM "type_FLOAT_INF+" WHERE f = 'Infinity' ORDER BY i;
-                                                              QUERY PLAN                                                               
----------------------------------------------------------------------------------------------------------------------------------------
+                                                               QUERY PLAN                                                                
+-----------------------------------------------------------------------------------------------------------------------------------------
  Sort
    Output: i, f, t, l
    Sort Key: "type_FLOAT_INF+".i
    ->  Foreign Scan on public."type_FLOAT_INF+"
          Output: i, f, t, l
-         SQLite query: SELECT `i`, sqlite_fdw_float(`f`), `t`, `l` FROM main."type_FLOAT_INF+" WHERE ((sqlite_fdw_float(`f`) = 9e999))
+         SQLite query: SELECT `i`, sqlite_fdw_float(`f`), `t`, `l` FROM main."type_FLOAT_INF+" WHERE ((sqlite_fdw_float(`f`) = 9.0e999))
 (6 rows)
 
 --Testcase 345:
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT * FROM "type_FLOAT_INF+" WHERE f > 'Inf' ORDER BY i;
-                                                                         QUERY PLAN                                                                          
--------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                          QUERY PLAN                                                                           
+---------------------------------------------------------------------------------------------------------------------------------------------------------------
  Foreign Scan on public."type_FLOAT_INF+"
    Output: i, f, t, l
-   SQLite query: SELECT `i`, sqlite_fdw_float(`f`), `t`, `l` FROM main."type_FLOAT_INF+" WHERE ((sqlite_fdw_float(`f`) > 9e999)) ORDER BY `i` ASC NULLS LAST
+   SQLite query: SELECT `i`, sqlite_fdw_float(`f`), `t`, `l` FROM main."type_FLOAT_INF+" WHERE ((sqlite_fdw_float(`f`) > 9.0e999)) ORDER BY `i` ASC NULLS LAST
 (3 rows)
 
 --Testcase 346:
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT * FROM "type_FLOAT_INF+" WHERE f < 'Inf' ORDER BY i;
-                                                                         QUERY PLAN                                                                          
--------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                          QUERY PLAN                                                                           
+---------------------------------------------------------------------------------------------------------------------------------------------------------------
  Foreign Scan on public."type_FLOAT_INF+"
    Output: i, f, t, l
-   SQLite query: SELECT `i`, sqlite_fdw_float(`f`), `t`, `l` FROM main."type_FLOAT_INF+" WHERE ((sqlite_fdw_float(`f`) < 9e999)) ORDER BY `i` ASC NULLS LAST
+   SQLite query: SELECT `i`, sqlite_fdw_float(`f`), `t`, `l` FROM main."type_FLOAT_INF+" WHERE ((sqlite_fdw_float(`f`) < 9.0e999)) ORDER BY `i` ASC NULLS LAST
 (3 rows)
 
 --Testcase 347:
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT * FROM "type_FLOAT_INF+" WHERE f = 'Inf' ORDER BY i;
-                                                              QUERY PLAN                                                               
----------------------------------------------------------------------------------------------------------------------------------------
+                                                               QUERY PLAN                                                                
+-----------------------------------------------------------------------------------------------------------------------------------------
  Sort
    Output: i, f, t, l
    Sort Key: "type_FLOAT_INF+".i
    ->  Foreign Scan on public."type_FLOAT_INF+"
          Output: i, f, t, l
-         SQLite query: SELECT `i`, sqlite_fdw_float(`f`), `t`, `l` FROM main."type_FLOAT_INF+" WHERE ((sqlite_fdw_float(`f`) = 9e999))
+         SQLite query: SELECT `i`, sqlite_fdw_float(`f`), `t`, `l` FROM main."type_FLOAT_INF+" WHERE ((sqlite_fdw_float(`f`) = 9.0e999))
 (6 rows)
 
 --Testcase 348:

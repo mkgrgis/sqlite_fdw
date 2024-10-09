@@ -4,7 +4,7 @@
 CREATE EXTENSION sqlite_fdw;
 --Testcase 130:
 CREATE SERVER sqlite_svr FOREIGN DATA WRAPPER sqlite_fdw
-OPTIONS (database '/tmp/sqlite_fdw_test/common.db');
+OPTIONS (database '/tmp/sqlite_fdw_test/common.db', temp_store_directory '/tmp');
 --Testcase 131:
 CREATE FOREIGN TABLE department(department_id int OPTIONS (key 'true'), department_name text) SERVER sqlite_svr; 
 --Testcase 132:
@@ -664,30 +664,33 @@ DELETE FROM case_exp;
 
 -- force_RO default SERVER default TABLE default
 --Testcase 235:
-INSERT INTO RO_RW_test (i, a, b, c) VALUES (2, 'B', 3.01, 1); -- OK
+SELECT * FROM sqlite_fdw_db_list('sqlite_svr');
+
 --Testcase 236:
-UPDATE RO_RW_test SET a='C' WHERE i=2; -- OK
+INSERT INTO RO_RW_test (i, a, b, c) VALUES (2, 'B', 3.01, 1); -- OK
 --Testcase 237:
+UPDATE RO_RW_test SET a='C' WHERE i=2; -- OK
+--Testcase 238:
 DELETE FROM RO_RW_test WHERE i=2; -- OK
 
 -- force_RO default SERVER true TABLE default
---Testcase 238:
-ALTER SERVER sqlite_svr OPTIONS (ADD updatable 'true');
 --Testcase 239:
-INSERT INTO RO_RW_test (i, a, b, c) VALUES (3, 'D', 5.02, 8); -- OK
+ALTER SERVER sqlite_svr OPTIONS (ADD updatable 'true');
 --Testcase 240:
-UPDATE RO_RW_test SET a='E' WHERE i=3; -- OK
+INSERT INTO RO_RW_test (i, a, b, c) VALUES (3, 'D', 5.02, 8); -- OK
 --Testcase 241:
-DELETE FROM RO_RW_test WHERE i=3; -- OK
+UPDATE RO_RW_test SET a='E' WHERE i=3; -- OK
 --Testcase 242:
+DELETE FROM RO_RW_test WHERE i=3; -- OK
+--Testcase 243:
 INSERT INTO RO_RW_test (i, a, b, c) VALUES (4, 'F', 0.005, 5); -- OK
 
 -- force_RO default SERVER false TABLE default
---Testcase 243:
-ALTER SERVER sqlite_svr OPTIONS (SET updatable 'false');
 --Testcase 244:
-INSERT INTO RO_RW_test (i, a, b, c) VALUES (5, 'H', 0.03, 7); -- ERR
+ALTER SERVER sqlite_svr OPTIONS (SET updatable 'false');
 --Testcase 245:
+INSERT INTO RO_RW_test (i, a, b, c) VALUES (5, 'H', 0.03, 7); -- ERR
+--Testcase 246:
 UPDATE RO_RW_test SET a='E' WHERE i=4; -- ERR
 --Testcase 246:
 DELETE FROM RO_RW_test WHERE i=4; -- ERR
@@ -782,228 +785,330 @@ ALTER SERVER sqlite_svr OPTIONS (ADD force_readonly 'false');
 
 -- force_RO false SERVER default TABLE default
 --Testcase 279:
-INSERT INTO RO_RW_test (i, a, b, c) VALUES (2, 'B', 3.01, 1); -- OK
+SELECT * FROM sqlite_fdw_db_list('sqlite_svr');
 --Testcase 280:
-UPDATE RO_RW_test SET a='C' WHERE i=2; -- OK
+INSERT INTO RO_RW_test (i, a, b, c) VALUES (2, 'B', 3.01, 1); -- OK
 --Testcase 281:
+UPDATE RO_RW_test SET a='C' WHERE i=2; -- OK
+--Testcase 282:
 DELETE FROM RO_RW_test WHERE i=2; -- OK
 
 -- force_RO false SERVER true TABLE default
---Testcase 282:
-ALTER SERVER sqlite_svr OPTIONS (ADD updatable 'true');
 --Testcase 283:
-INSERT INTO RO_RW_test (i, a, b, c) VALUES (3, 'D', 5.02, 8); -- OK
+ALTER SERVER sqlite_svr OPTIONS (ADD updatable 'true');
 --Testcase 284:
-UPDATE RO_RW_test SET a='E' WHERE i=3; -- OK
+INSERT INTO RO_RW_test (i, a, b, c) VALUES (3, 'D', 5.02, 8); -- OK
 --Testcase 285:
-DELETE FROM RO_RW_test WHERE i=3; -- OK
+UPDATE RO_RW_test SET a='E' WHERE i=3; -- OK
 --Testcase 286:
+DELETE FROM RO_RW_test WHERE i=3; -- OK
+--Testcase 287:
 INSERT INTO RO_RW_test (i, a, b, c) VALUES (4, 'F', 0.005, 5); -- OK
 -- force_RO false SERVER false TABLE default
---Testcase 287:
-ALTER SERVER sqlite_svr OPTIONS (SET updatable 'false');
 --Testcase 288:
-INSERT INTO RO_RW_test (i, a, b, c) VALUES (5, 'H', 0.03, 7); -- ERR
+ALTER SERVER sqlite_svr OPTIONS (SET updatable 'false');
 --Testcase 289:
-UPDATE RO_RW_test SET a='E' WHERE i=4; -- ERR
+INSERT INTO RO_RW_test (i, a, b, c) VALUES (5, 'H', 0.03, 7); -- ERR
 --Testcase 290:
+UPDATE RO_RW_test SET a='E' WHERE i=4; -- ERR
+--Testcase 291:
 DELETE FROM RO_RW_test WHERE i=4; -- ERR
 
 -- force_RO false SERVER default TABLE true
---Testcase 291:
-ALTER SERVER sqlite_svr OPTIONS (DROP updatable);
 --Testcase 292:
-ALTER FOREIGN TABLE RO_RW_test OPTIONS (ADD updatable 'true');
+ALTER SERVER sqlite_svr OPTIONS (DROP updatable);
 --Testcase 293:
-INSERT INTO RO_RW_test (i, a, b, c) VALUES (6, 'I', 1.403, 2); -- OK
+ALTER FOREIGN TABLE RO_RW_test OPTIONS (ADD updatable 'true');
 --Testcase 294:
-UPDATE RO_RW_test SET a='J' WHERE i=6; -- OK
+INSERT INTO RO_RW_test (i, a, b, c) VALUES (6, 'I', 1.403, 2); -- OK
 --Testcase 295:
+UPDATE RO_RW_test SET a='J' WHERE i=6; -- OK
+--Testcase 296:
 DELETE FROM RO_RW_test WHERE i=6; -- OK
 
 -- force_RO false SERVER default TABLE false
---Testcase 296:
-ALTER FOREIGN TABLE RO_RW_test OPTIONS (SET updatable 'false');
 --Testcase 297:
-INSERT INTO RO_RW_test (i, a, b, c) VALUES (7, 'K', 2.01, 4); -- ERR
+ALTER FOREIGN TABLE RO_RW_test OPTIONS (SET updatable 'false');
 --Testcase 298:
-UPDATE RO_RW_test SET a='L' WHERE i=4; -- ERR
+INSERT INTO RO_RW_test (i, a, b, c) VALUES (7, 'K', 2.01, 4); -- ERR
 --Testcase 299:
+UPDATE RO_RW_test SET a='L' WHERE i=4; -- ERR
+--Testcase 300:
 DELETE FROM RO_RW_test WHERE i=4; -- ERR
 
 -- force_RO false SERVER true TABLE true
---Testcase 300:
-ALTER SERVER sqlite_svr OPTIONS (ADD updatable 'true');
 --Testcase 301:
-ALTER FOREIGN TABLE RO_RW_test OPTIONS (SET updatable 'true');
+ALTER SERVER sqlite_svr OPTIONS (ADD updatable 'true');
 --Testcase 302:
-INSERT INTO RO_RW_test (i, a, b, c) VALUES (8, 'M', 5.02, 8); -- OK
+ALTER FOREIGN TABLE RO_RW_test OPTIONS (SET updatable 'true');
 --Testcase 303:
-UPDATE RO_RW_test SET a='N' WHERE i=8; -- OK
+INSERT INTO RO_RW_test (i, a, b, c) VALUES (8, 'M', 5.02, 8); -- OK
 --Testcase 304:
-DELETE FROM RO_RW_test WHERE i=8; -- OK
+UPDATE RO_RW_test SET a='N' WHERE i=8; -- OK
 --Testcase 305:
+DELETE FROM RO_RW_test WHERE i=8; -- OK
+--Testcase 306:
 INSERT INTO RO_RW_test (i, a, b, c) VALUES (9, 'O', 3.21, 9); -- OK
 
 -- force_RO false SERVER false TABLE true
---Testcase 306:
+--Testcase 307
 ALTER SERVER sqlite_svr OPTIONS (SET updatable 'false');
---Testcase 307:
+--Testcase 308
 INSERT INTO RO_RW_test (i, a, b, c) VALUES (10, 'P', 4.15, 1); -- OK
---Testcase 308:
-UPDATE RO_RW_test SET a='Q' WHERE i=9; -- OK
 --Testcase 309:
+UPDATE RO_RW_test SET a='Q' WHERE i=9; -- OK
+--Testcase 310:
 DELETE FROM RO_RW_test WHERE i=9; -- OK
 
 -- force_RO false SERVER false TABLE false
---Testcase 310:
-ALTER FOREIGN TABLE RO_RW_test OPTIONS (SET updatable 'false');
 --Testcase 311:
-INSERT INTO RO_RW_test (i, a, b, c) VALUES (11, 'Q', 2.27, 5); -- ERR
+ALTER FOREIGN TABLE RO_RW_test OPTIONS (SET updatable 'false');
 --Testcase 312:
-UPDATE RO_RW_test SET a='S' WHERE i=9; -- ERR
+INSERT INTO RO_RW_test (i, a, b, c) VALUES (11, 'Q', 2.27, 5); -- ERR
 --Testcase 313:
+UPDATE RO_RW_test SET a='S' WHERE i=9; -- ERR
+--Testcase 314:
 DELETE FROM RO_RW_test WHERE i=9; -- ERR
 
 -- force_RO false SERVER true TABLE false
---Testcase 314:
-ALTER SERVER sqlite_svr OPTIONS (SET updatable 'true');
 --Testcase 315:
-INSERT INTO RO_RW_test (i, a, b, c) VALUES (12, 'R', 6.18, 11); -- ERR
+ALTER SERVER sqlite_svr OPTIONS (SET updatable 'true');
 --Testcase 316:
-UPDATE RO_RW_test SET a='T' WHERE i=9; -- ERR
+INSERT INTO RO_RW_test (i, a, b, c) VALUES (12, 'R', 6.18, 11); -- ERR
 --Testcase 317:
+UPDATE RO_RW_test SET a='T' WHERE i=9; -- ERR
+--Testcase 318:
 DELETE FROM RO_RW_test WHERE i=9; -- ERR
 
---Testcase 318:
-ALTER SERVER sqlite_svr OPTIONS (DROP updatable);
 --Testcase 319:
+ALTER SERVER sqlite_svr OPTIONS (DROP updatable);
+--Testcase 320:
 ALTER FOREIGN TABLE RO_RW_test OPTIONS (DROP updatable);
 
---Testcase 320:
-SELECT * FROM RO_RW_test ORDER BY i;
 --Testcase 321:
+SELECT * FROM RO_RW_test ORDER BY i;
+--Testcase 322:
 DELETE FROM RO_RW_test;
 
---Testcase 322:
+--Testcase 323
 ALTER SERVER sqlite_svr OPTIONS (SET force_readonly 'true');
 
 -- force_RO true SERVER default TABLE default
---Testcase 323:
-INSERT INTO RO_RW_test (i, a, b, c) VALUES (2, 'B', 3.01, 1); -- ERR
 --Testcase 324:
-UPDATE RO_RW_test SET a='C' WHERE i=2; -- ERR
+SELECT * FROM sqlite_fdw_db_list('sqlite_svr');
 --Testcase 325:
+INSERT INTO RO_RW_test (i, a, b, c) VALUES (2, 'B', 3.01, 1); -- ERR
+--Testcase 326:
+UPDATE RO_RW_test SET a='C' WHERE i=2; -- ERR
+--Testcase 327:
 DELETE FROM RO_RW_test WHERE i=2; -- ERR
 
 -- force_RO true SERVER true TABLE default
---Testcase 326:
-ALTER SERVER sqlite_svr OPTIONS (ADD updatable 'true');
---Testcase 327:
-INSERT INTO RO_RW_test (i, a, b, c) VALUES (3, 'D', 5.02, 8); -- ERR
 --Testcase 328:
-UPDATE RO_RW_test SET a='E' WHERE i=3; -- ERR
+ALTER SERVER sqlite_svr OPTIONS (ADD updatable 'true');
 --Testcase 329:
-DELETE FROM RO_RW_test WHERE i=3; -- ERR
+INSERT INTO RO_RW_test (i, a, b, c) VALUES (3, 'D', 5.02, 8); -- ERR
 --Testcase 330:
+UPDATE RO_RW_test SET a='E' WHERE i=3; -- ERR
+--Testcase 331:
+DELETE FROM RO_RW_test WHERE i=3; -- ERR
+--Testcase 332:
 INSERT INTO RO_RW_test (i, a, b, c) VALUES (4, 'F', 0.005, 5); -- ERR
 -- force_RO true SERVER false TABLE default
---Testcase 331:
-ALTER SERVER sqlite_svr OPTIONS (SET updatable 'false');
---Testcase 332:
-INSERT INTO RO_RW_test (i, a, b, c) VALUES (5, 'H', 0.03, 7); -- ERR
 --Testcase 333:
-UPDATE RO_RW_test SET a='E' WHERE i=4; -- ERR
+ALTER SERVER sqlite_svr OPTIONS (SET updatable 'false');
 --Testcase 334:
+INSERT INTO RO_RW_test (i, a, b, c) VALUES (5, 'H', 0.03, 7); -- ERR
+--Testcase 335:
+UPDATE RO_RW_test SET a='E' WHERE i=4; -- ERR
+--Testcase 336:
 DELETE FROM RO_RW_test WHERE i=4; -- ERR
 
 -- force_RO true SERVER default TABLE true
---Testcase 335:
-ALTER SERVER sqlite_svr OPTIONS (DROP updatable);
---Testcase 336:
-ALTER FOREIGN TABLE RO_RW_test OPTIONS (ADD updatable 'true');
 --Testcase 337:
-INSERT INTO RO_RW_test (i, a, b, c) VALUES (6, 'I', 1.403, 2); -- ERR
+ALTER SERVER sqlite_svr OPTIONS (DROP updatable);
 --Testcase 338:
-UPDATE RO_RW_test SET a='J' WHERE i=6; -- ERR
+ALTER FOREIGN TABLE RO_RW_test OPTIONS (ADD updatable 'true');
 --Testcase 339:
+INSERT INTO RO_RW_test (i, a, b, c) VALUES (6, 'I', 1.403, 2); -- ERR
+--Testcase 340:
+UPDATE RO_RW_test SET a='J' WHERE i=6; -- ERR
+--Testcase 341:
 DELETE FROM RO_RW_test WHERE i=6; -- ERR
 
 -- force_RO true SERVER default TABLE false
---Testcase 340:
-ALTER FOREIGN TABLE RO_RW_test OPTIONS (SET updatable 'false');
---Testcase 341:
-INSERT INTO RO_RW_test (i, a, b, c) VALUES (7, 'K', 2.01, 4); -- ERR
 --Testcase 342:
-UPDATE RO_RW_test SET a='L' WHERE i=4; -- ERR
+ALTER FOREIGN TABLE RO_RW_test OPTIONS (SET updatable 'false');
 --Testcase 343:
+INSERT INTO RO_RW_test (i, a, b, c) VALUES (7, 'K', 2.01, 4); -- ERR
+--Testcase 344:
+UPDATE RO_RW_test SET a='L' WHERE i=4; -- ERR
+--Testcase 345:
 DELETE FROM RO_RW_test WHERE i=4; -- ERR
 
 -- force_RO true SERVER true TABLE true
---Testcase 344:
-ALTER SERVER sqlite_svr OPTIONS (ADD updatable 'true'); -- ERR
---Testcase 345:
-ALTER FOREIGN TABLE RO_RW_test OPTIONS (SET updatable 'true'); -- ERR
 --Testcase 346:
-INSERT INTO RO_RW_test (i, a, b, c) VALUES (8, 'M', 5.02, 8); -- ERR
+ALTER SERVER sqlite_svr OPTIONS (ADD updatable 'true'); -- ERR
 --Testcase 347:
-UPDATE RO_RW_test SET a='N' WHERE i=8; -- OK
+ALTER FOREIGN TABLE RO_RW_test OPTIONS (SET updatable 'true'); -- ERR
 --Testcase 348:
-DELETE FROM RO_RW_test WHERE i=8; -- OK
+INSERT INTO RO_RW_test (i, a, b, c) VALUES (8, 'M', 5.02, 8); -- ERR
 --Testcase 349:
+UPDATE RO_RW_test SET a='N' WHERE i=8; -- OK
+--Testcase 350:
+DELETE FROM RO_RW_test WHERE i=8; -- OK
+--Testcase 351:
 INSERT INTO RO_RW_test (i, a, b, c) VALUES (9, 'O', 3.21, 9); -- ERR
 
 -- force_RO true SERVER false TABLE true
---Testcase 350:
-ALTER SERVER sqlite_svr OPTIONS (SET updatable 'false');
---Testcase 351:
-INSERT INTO RO_RW_test (i, a, b, c) VALUES (10, 'P', 4.15, 1); -- ERR
 --Testcase 352:
-UPDATE RO_RW_test SET a='Q' WHERE i=9; -- ERR
+ALTER SERVER sqlite_svr OPTIONS (SET updatable 'false');
 --Testcase 353:
+INSERT INTO RO_RW_test (i, a, b, c) VALUES (10, 'P', 4.15, 1); -- ERR
+--Testcase 354:
+UPDATE RO_RW_test SET a='Q' WHERE i=9; -- ERR
+--Testcase 355:
 DELETE FROM RO_RW_test WHERE i=9; -- ERR
 
 -- force_RO true SERVER false TABLE false
---Testcase 354:
-ALTER FOREIGN TABLE RO_RW_test OPTIONS (SET updatable 'false');
---Testcase 355:
-INSERT INTO RO_RW_test (i, a, b, c) VALUES (11, 'Q', 2.27, 5); -- ERR
 --Testcase 356:
-UPDATE RO_RW_test SET a='S' WHERE i=9; -- ERR
+ALTER FOREIGN TABLE RO_RW_test OPTIONS (SET updatable 'false');
 --Testcase 357:
+INSERT INTO RO_RW_test (i, a, b, c) VALUES (11, 'Q', 2.27, 5); -- ERR
+--Testcase 358:
+UPDATE RO_RW_test SET a='S' WHERE i=9; -- ERR
+--Testcase 359:
 DELETE FROM RO_RW_test WHERE i=9; -- ERR
 
 -- force_RO true SERVER true TABLE false
---Testcase 358:
-ALTER SERVER sqlite_svr OPTIONS (SET updatable 'true');
---Testcase 359:
-INSERT INTO RO_RW_test (i, a, b, c) VALUES (12, 'R', 6.18, 11); -- ERR
 --Testcase 360:
-UPDATE RO_RW_test SET a='T' WHERE i=9; -- ERR
+ALTER SERVER sqlite_svr OPTIONS (SET updatable 'true');
 --Testcase 361:
+INSERT INTO RO_RW_test (i, a, b, c) VALUES (12, 'R', 6.18, 11); -- ERR
+--Testcase 362:
+UPDATE RO_RW_test SET a='T' WHERE i=9; -- ERR
+--Testcase 363:
 DELETE FROM RO_RW_test WHERE i=9; -- ERR
 
---Testcase 362:
+--Testcase 364:
 ALTER SERVER sqlite_svr OPTIONS (DROP updatable);
---Testcase 363:
+--Testcase 365:
 ALTER FOREIGN TABLE RO_RW_test OPTIONS (DROP updatable);
 
---Testcase 364:
+--Testcase 366:
 ALTER SERVER sqlite_svr OPTIONS (DROP force_readonly);
 
---Testcase 365:
+--Testcase 367:
+SELECT * FROM sqlite_fdw_db_list('sqlite_svr');
+--Testcase 368:
 SELECT * FROM RO_RW_test ORDER BY i;
---Testcase 366:
+--Testcase 369:
 DROP FOREIGN TABLE RO_RW_test;
 -- End of RO/RW test
 
 --Bind error message test for some unsupported data type
---Testcase 366:
+--Testcase 370:
 ALTER FOREIGN TABLE numbers ALTER COLUMN b TYPE tsquery;
---Testcase 367:
+--Testcase 371:
 INSERT INTO numbers VALUES(8,'fat & (rat | cat)');
---Testcase 368:
+--Testcase 372:
 ALTER FOREIGN TABLE numbers ALTER COLUMN b TYPE varchar(255);
+
+--Testcase 373:
+SELECT sqlite_fdw_db_encoding('sqlite_svr');
+
+--Testcase 374:
+SELECT sqlite_fdw_db_journal_mode('sqlite_svr') jm;
+
+--Testcase 375:
+SELECT sqlite_fdw_db_secure_delete('sqlite_svr') sd;
+
+--Testcase 376:
+SELECT sqlite_fdw_db_page_size('sqlite_svr') ps_b;
+
+--Testcase 377:
+SELECT sqlite_fdw_db_exclusive_locking_mode('sqlite_svr') elm;
+
+--Testcase 378:
+SELECT sqlite_fdw_db_auto_vacuum('sqlite_svr') av;
+
+--Testcase 379:
+SELECT sqlite_fdw_db_temp_store('sqlite_svr') tsm;
+
+--Testcase 380:
+SELECT sqlite_fdw_db_synchronous_mode('sqlite_svr') sm;
+
+--Testcase 381:
+SELECT * FROM sqlite_fdw_table_info('sqlite_svr', 'type_UUID+');
+--Testcase 382:
+SELECT * FROM sqlite_fdw_table_info('sqlite_svr', 'type_UUID');
+--Testcase 383:
+SELECT * FROM sqlite_fdw_table_info('sqlite_svr', 'BitT');
+--Testcase 384:
+SELECT * FROM sqlite_fdw_table_info('sqlite_svr', 'strict');
+--Testcase 385:
+SELECT * FROM sqlite_fdw_table_info('sqlite_svr', 'norowid');
+
+--Testcase 386:
+SELECT * FROM sqlite_fdw_rel_list('sqlite_svr');
+--Testcase 387:
+SELECT * FROM sqlite_fdw_index_list('sqlite_svr', 'Unicode data');
+--Testcase 388:
+SELECT * FROM sqlite_fdw_table_info('sqlite_svr', 'fts_table');
+--Testcase 389:
+SELECT * FROM sqlite_fdw_table_info('sqlite_svr', 'grem1_1');
+--Testcase 390:
+SELECT * FROM sqlite_fdw_table_info('sqlite_svr', 'grem1_2');
+--Testcase 391:
+SELECT * FROM sqlite_fdw_table_info('sqlite_svr', 'grem1_3');
+
+--Testcase 392:
+SELECT sqlite_fdw_db_application_id('sqlite_svr') ai;
+--Testcase 393:
+SELECT sqlite_fdw_db_cache_spill('sqlite_svr') dcs;
+--Testcase 394:
+SELECT sqlite_fdw_db_max_page_count('sqlite_svr') mpc;
+--Testcase 395:
+SELECT sqlite_fdw_db_journal_size_limit('sqlite_svr') jsl;
+--Testcase 396:
+SELECT sqlite_fdw_db_cache_size('sqlite_svr') cs;
+--Testcase 397:
+SELECT sqlite_fdw_db_tmp_directory('sqlite_svr') td;
+
+--Testcase 398:
+SELECT sqlite_fdw_db_user_version('sqlite_svr') uv;
+--Testcase 399:
+SELECT sqlite_fdw_db_schema_version('sqlite_svr') sv;
+--Testcase 400:
+SELECT * FROM sqlite_fdw_db_wal_checkpoint('sqlite_svr') walcp;
+
+--Testcase 401:
+SELECT sqlite_fdw_db_fkeys('sqlite_svr') fk;
+--Testcase 402:
+SELECT * FROM sqlite_fdw_db_fkeys_list('sqlite_svr', 'fk_d_track');
+
+--Testcase 402: -- ERR, not correct
+ALTER SERVER sqlite_svr OPTIONS (ADD integrity_check 'true');
+--Testcase 403:
+ALTER SERVER sqlite_svr OPTIONS (ADD integrity_check 'none');
+--Testcase 404: -- any SQLite internal query
+SELECt count(*) FROM numbers;
+--Testcase 405:
+ALTER SERVER sqlite_svr OPTIONS (SET integrity_check 'quick');
+--Testcase 406: -- any SQLite internal query
+SELECt count(*) FROM numbers;
+--Testcase 407:
+ALTER SERVER sqlite_svr OPTIONS (SET integrity_check 'full');
+--Testcase 408: -- any SQLite internal query
+SELECt count(*) FROM numbers;
+--Testcase 409:
+ALTER SERVER sqlite_svr OPTIONS (SET integrity_check 'fkeys');
+--Testcase 410: -- any SQLite internal query
+SELECt count(*) FROM numbers;
+--Testcase 411:
+ALTER SERVER sqlite_svr OPTIONS (DROP integrity_check);
+--Testcase 412: -- any SQLite internal query
+SELECt count(*) FROM numbers;
 
 --Testcase 142:
 DROP FUNCTION test_param_WHERE();

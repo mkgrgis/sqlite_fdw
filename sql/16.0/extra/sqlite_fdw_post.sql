@@ -27,7 +27,7 @@ CREATE USER MAPPING FOR public SERVER sqlite_svr3;
 -- ===================================================================
 --Testcase 486:
 CREATE SCHEMA "S 1";
-IMPORT FOREIGN SCHEMA public FROM SERVER sqlite_svr INTO "S 1";
+IMPORT FOREIGN SCHEMA main FROM SERVER sqlite_svr INTO "S 1";
 
 --Testcase 1:
 INSERT INTO "S 1"."T 1"
@@ -3590,7 +3590,7 @@ DROP FOREIGN TABLE tru_ftable_parent, tru_ftable_child, tru_pk_ftable,tru_ftable
 
 --Testcase 728:
 CREATE SCHEMA import_dest1;
-IMPORT FOREIGN SCHEMA public FROM SERVER sqlite_svr INTO import_dest1;
+IMPORT FOREIGN SCHEMA main FROM SERVER sqlite_svr INTO import_dest1;
 --Testcase 477:
 \det+ import_dest1.*
 --Testcase 478:
@@ -3599,7 +3599,7 @@ IMPORT FOREIGN SCHEMA public FROM SERVER sqlite_svr INTO import_dest1;
 -- Options
 --Testcase 729:
 CREATE SCHEMA import_dest2;
-IMPORT FOREIGN SCHEMA public FROM SERVER sqlite_svr INTO import_dest2
+IMPORT FOREIGN SCHEMA main FROM SERVER sqlite_svr INTO import_dest2
   OPTIONS (import_default 'true');
 --Testcase 479:
 \det+ import_dest2.*
@@ -3609,19 +3609,19 @@ IMPORT FOREIGN SCHEMA public FROM SERVER sqlite_svr INTO import_dest2
 -- Check LIMIT TO and EXCEPT
 --Testcase 730:
 CREATE SCHEMA import_dest3;
-IMPORT FOREIGN SCHEMA public LIMIT TO ("T 1", loct6, nonesuch)
+IMPORT FOREIGN SCHEMA main LIMIT TO ("T 1", loct6, nonesuch)
   FROM SERVER sqlite_svr INTO import_dest3;
 --Testcase 481:
 \det+ import_dest3.*
-IMPORT FOREIGN SCHEMA public EXCEPT ("T 1", loct6, nonesuch)
+IMPORT FOREIGN SCHEMA main EXCEPT ("T 1", loct6, nonesuch)
   FROM SERVER sqlite_svr INTO import_dest3;
 --Testcase 482:
 \det+ import_dest3.*
 
 -- Assorted error cases
-IMPORT FOREIGN SCHEMA public FROM SERVER sqlite_svr INTO import_dest3;
-IMPORT FOREIGN SCHEMA public FROM SERVER sqlite_svr INTO notthere;
-IMPORT FOREIGN SCHEMA public FROM SERVER nowhere INTO notthere;
+IMPORT FOREIGN SCHEMA main FROM SERVER sqlite_svr INTO import_dest3;
+IMPORT FOREIGN SCHEMA main FROM SERVER sqlite_svr INTO notthere;
+IMPORT FOREIGN SCHEMA main FROM SERVER nowhere INTO notthere;
 
 /*
 -- Skip these test, sqlite fdw does not support fetch_size option, partition table

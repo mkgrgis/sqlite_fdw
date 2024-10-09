@@ -176,6 +176,7 @@ sqlite_deparse_relation(StringInfo buf, Relation rel)
 {
 	ForeignTable *table;
 	const char *relname = NULL;
+	char *schname = "main";
 	ListCell   *lc = NULL;
 
 	/* obtain additional catalog information. */
@@ -190,13 +191,15 @@ sqlite_deparse_relation(StringInfo buf, Relation rel)
 
 		if (strcmp(def->defname, "table") == 0)
 			relname = defGetString(def);
+		if (strcmp(def->defname, "schema_name") == 0)
+			schname = defGetString(def);
 	}
 
 	if (relname == NULL)
 		relname = RelationGetRelationName(rel);
 
 	/* always use main database for SQLite */
-	appendStringInfo(buf, "%s.%s", "main", sqlite_quote_identifier(relname, QUOTE));
+	appendStringInfo(buf, "%s.%s", schname, sqlite_quote_identifier(relname, QUOTE));
 }
 
 static char *
@@ -2623,6 +2626,11 @@ get_complementary_var_node(Expr *node)
 	}
 }
 
+/* IEEE 754-2008 : ∞ and NaN */
+const char * CHAR_INF_SHORT = "Inf";
+const char * CHAR_INF_LONG = "Infinity";
+const char * CHAR_NAN = "NaN";
+
 /*
  * Deparse given constant value into context->buf.
  *
@@ -2688,10 +2696,10 @@ sqlite_deparse_const(Const *node, deparse_expr_cxt *context, int showtype)
 					else
 						appendStringInfoString(buf, extval);
 				}
-				else if (strcasecmp(extval, "Inf") == 0 ||
-						 strcasecmp(extval, "Infinity") == 0 ||
-						 strcasecmp(extval + 1, "Inf") == 0 ||
-						 strcasecmp(extval + 1, "Infinity") == 0)
+				else if (strcasecmp(extval, CHAR_INF_SHORT) == 0 ||
+						 strcasecmp(extval, CHAR_INF_LONG) == 0 ||
+						 strcasecmp(extval + sizeof(char), CHAR_INF_SHORT) == 0 ||
+						 strcasecmp(extval + sizeof(char), CHAR_INF_LONG) == 0)
 				{
 					bool is_negative_or_positive = false;
 					if (extval[0] == '-' || extval[0] == '+')
@@ -2700,7 +2708,7 @@ sqlite_deparse_const(Const *node, deparse_expr_cxt *context, int showtype)
 					if (is_negative_or_positive)
 						appendStringInfo(buf, "(%c", extval[0]);
 
-					appendStringInfo(buf, "9e999");
+					appendStringInfo(buf, "9.0e999");
 
 					if (is_negative_or_positive)
 						appendStringInfo(buf, ")");

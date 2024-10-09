@@ -12,12 +12,12 @@
 
 #include "postgres.h"
 #include "sqlite_fdw.h"
+#include "limits.h"
 
 #include "access/xact.h"
 #include "commands/defrem.h"
-#if (PG_VERSION_NUM >= 140000 && PG_VERSION_NUM < 150000)
-	#include "miscadmin.h"
-#endif
+#include "mb/pg_wchar.h"
+#include "miscadmin.h"
 #include "optimizer/cost.h"
 #include "utils/builtins.h"
 #include "utils/inval.h"
@@ -38,10 +38,14 @@ typedef struct ConnCacheEntry
 	/* Remaining fields are invalid when conn is NULL: */
 	int			xact_depth;		/* 0 = no xact open, 1 = main xact open, 2 =
 								 * one level of subxact open, etc */
+	char	   *dbpath;			/* Address of SQLite file in a file system*/
 	bool		keep_connections;	/* setting value of keep_connections
 									 * server option */
 	bool		truncatable;	/* check table can truncate or not */
 	bool		readonly;		/* option force_readonly, readonly SQLite file mode */
+	char	   *integrity_check_mode;/* one of modes of database checks before opening a new connection */
+	char	   *temp_store_directory; /* non-default directory address for temporary files like WAL etc. */
+	bool		foreign_keys;	/* true if FDW should not destroy internal SQLite foreign keys during DML operations */
 	bool		invalidated;	/* true if reconnect is pending */
 	Oid			serverid;		/* foreign server OID used to get server name */
 	List	   *stmtList;		/* list stmt associated with conn */
@@ -57,12 +61,50 @@ static HTAB *ConnectionHash = NULL;
 /* tracks whether any work is needed in callback functions */
 static volatile bool xact_got_connection = false;
 
+/* connection management functions */
 PG_FUNCTION_INFO_V1(sqlite_fdw_get_connections);
 PG_FUNCTION_INFO_V1(sqlite_fdw_disconnect);
 PG_FUNCTION_INFO_V1(sqlite_fdw_disconnect_all);
+/* schemas support */
+PG_FUNCTION_INFO_V1(sqlite_fdw_db_attach);
+PG_FUNCTION_INFO_V1(sqlite_fdw_db_detach);
+PG_FUNCTION_INFO_V1(sqlite_fdw_db_list);
+/* SQLite database file metadata functions */
+PG_FUNCTION_INFO_V1(sqlite_fdw_db_encoding);
+PG_FUNCTION_INFO_V1(sqlite_fdw_db_schema_version);
+PG_FUNCTION_INFO_V1(sqlite_fdw_db_user_version);
+PG_FUNCTION_INFO_V1(sqlite_fdw_db_application_id);
+/* metadata */
+PG_FUNCTION_INFO_V1(sqlite_fdw_rel_list);
+PG_FUNCTION_INFO_V1(sqlite_fdw_table_info);
+PG_FUNCTION_INFO_V1(sqlite_fdw_index_list);
+/* journal functions */
+PG_FUNCTION_INFO_V1(sqlite_fdw_db_journal_mode);
+PG_FUNCTION_INFO_V1(sqlite_fdw_db_journal_size_limit);
+PG_FUNCTION_INFO_V1(sqlite_fdw_db_synchronous_mode);
+/* SQLite foreign keys functions */
+PG_FUNCTION_INFO_V1(sqlite_fdw_db_fkeys);
+PG_FUNCTION_INFO_V1(sqlite_fdw_db_fkeys_list);
+PG_FUNCTION_INFO_V1(sqlite_fdw_db_fkeys_check);
+/* SQLite page functions */
+PG_FUNCTION_INFO_V1(sqlite_fdw_db_page_size);
+PG_FUNCTION_INFO_V1(sqlite_fdw_db_cache_spill);
+PG_FUNCTION_INFO_V1(sqlite_fdw_db_max_page_count);
+PG_FUNCTION_INFO_V1(sqlite_fdw_db_cache_size);
+/* WAL and tmp storage functions */
+PG_FUNCTION_INFO_V1(sqlite_fdw_db_tmp_directory);
+PG_FUNCTION_INFO_V1(sqlite_fdw_db_temp_store);
+PG_FUNCTION_INFO_V1(sqlite_fdw_db_wal_checkpoint);
 
-static sqlite3 *sqlite_open_db(const char *dbpath, int flags);
+/* Other diagnostic PRAGMAs */
+PG_FUNCTION_INFO_V1(sqlite_fdw_db_secure_delete);
+PG_FUNCTION_INFO_V1(sqlite_fdw_db_exclusive_locking_mode);
+PG_FUNCTION_INFO_V1(sqlite_fdw_db_auto_vacuum);
+
+
+static sqlite3 *sqlite_open_db(ConnCacheEntry *entry);
 static void sqlite_make_new_connection(ConnCacheEntry *entry, ForeignServer *server);
+static ConnCacheEntry * sqlite_get_conn_cache_entry(ForeignServer *server, bool truncatable);
 void		sqlite_do_sql_command(sqlite3 * conn, const char *sql, int level, List **busy_connection);
 static void sqlite_begin_remote_xact(ConnCacheEntry *entry);
 static void sqlitefdw_xact_callback(XactEvent event, void *arg);
@@ -79,6 +121,9 @@ static bool sqlite_disconnect_cached_connections(Oid serverid);
 static void sqlite_finalize_list_stmt(List **list);
 static List *sqlite_append_stmt_to_list(List *list, sqlite3_stmt * stmt);
 
+static int attach_sqlite_db (ForeignServer* server, sqlite3* conn, const char * dbadr, const Name alias);
+static void detach_sqlite_db (ForeignServer* server, sqlite3* conn, const Name alias);
+
 typedef struct BusyHandlerArg
 {
 	sqlite3	   *conn;
@@ -87,13 +132,127 @@ typedef struct BusyHandlerArg
 } BusyHandlerArg;
 
 /*
- * sqlite_get_connection:
- * 			Get a connection which can be used to execute queries on
- * the remote Sqlite server with the user's authorization. A new connection
+ * one_string_value:
+ *
+ * Returns char* value from SQL commands, 1st column and 1st row. Uses for PRAGMA.
+ */
+static char*
+one_string_value (sqlite3* db, char* query){
+	sqlite3_stmt   *volatile pragma_stmt = NULL;
+	int				rc = SQLITE_ERROR;
+	char			*reschar = NULL;
+
+	sqlite_prepare_wrapper(NULL, db, query, (sqlite3_stmt * *) & pragma_stmt, NULL, false);
+	for (;;)
+	{
+		rc = sqlite3_step(pragma_stmt);
+		if (rc == SQLITE_DONE)
+			break;
+		else if (rc == SQLITE_ROW)
+		{
+			sqlite3_value  *resval = sqlite3_column_value(pragma_stmt, 0);
+			int				vt = sqlite3_value_type(resval);
+			int				vb = sqlite3_value_bytes(resval);
+			if ( vt != SQLITE3_TEXT)
+			{
+				ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("\"%s\" returns not a text, but %s (%d bytes). Please check your SQLite configuration",
+					 		query, sqlite_datatype(vt), vb)
+					)
+				);
+			}
+			else
+			{
+				char* t = (char*)sqlite3_value_text(resval);
+
+				reschar = (char*)palloc(vb);
+				strcpy(reschar, t);
+			}
+		}
+		else
+		{
+			sqlitefdw_report_error(ERROR, NULL, db, sqlite3_sql(pragma_stmt), rc);
+		}
+	}
+	sqlite3_finalize(pragma_stmt);
+	pragma_stmt = NULL;
+	return reschar;
+}
+
+/*
+ * one_integer_value:
+ *
+ * Returns integer value from SQL commands, 1st column and 1st row. Uses for PRAGMA.
+ */
+static int
+one_integer_value (sqlite3* db, char* query){
+	sqlite3_stmt   *volatile pragma_stmt = NULL;
+	int				rc = SQLITE_ERROR;
+	int				resint = -1;
+
+	sqlite_prepare_wrapper(NULL, db, query, (sqlite3_stmt * *) & pragma_stmt, NULL, false);
+	for (;;)
+	{
+		rc = sqlite3_step(pragma_stmt);
+		if (rc == SQLITE_DONE)
+			break;
+		else if (rc == SQLITE_ROW)
+		{
+			sqlite3_value  *resval = sqlite3_column_value(pragma_stmt, 0);
+			int				vt = sqlite3_value_type(resval);
+			int				vb = sqlite3_value_bytes(resval);
+			if ( vt != SQLITE_INTEGER)
+			{
+				ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("\"%s\" returns not integer, but %s (%d bytes). Please check your SQLite configuration",
+					 		query, sqlite_datatype(vt), vb)
+					)
+				);
+			}
+			else
+			{
+				resint = sqlite3_value_int(resval);
+			}
+		}
+		else
+		{
+			sqlitefdw_report_error(ERROR, NULL, db, sqlite3_sql(pragma_stmt), rc);
+		}
+	}
+	sqlite3_finalize(pragma_stmt);
+	pragma_stmt = NULL;
+	return resint;
+}
+
+/*
+ * CStringGetNameDatum:
+ *
+ * Make Name Datum from C string
+ */
+static Datum
+CStringGetNameDatum (char * s)
+{
+	int			len = strlen(s);
+	Name		n;
+	/* Truncate oversize input */
+	if (len >= NAMEDATALEN)
+		len = pg_mbcliplen(s, len, NAMEDATALEN - 1);
+	/* We use palloc0 here to ensure result is zero-padded */
+	n = (Name) palloc0(NAMEDATALEN);
+	memcpy(NameStr(*n), s, len);
+	return NameGetDatum(n);
+}
+
+/*
+ * sqlite_get_conn_cache_entry:
+ * Get a connection cahce entry which can be used to ensure some options or get
+ * connection of the remote SQLite server with the user's authorization. A new connection
  * is established if we don't already have a suitable one.
  */
-sqlite3 *
-sqlite_get_connection(ForeignServer *server, bool truncatable)
+ConnCacheEntry *
+sqlite_get_conn_cache_entry(ForeignServer *server, bool truncatable)
 {
 	bool		found;
 	ConnCacheEntry *entry;
@@ -181,7 +340,78 @@ sqlite_get_connection(ForeignServer *server, bool truncatable)
 		 */
 		sqlite_begin_remote_xact(entry);
 
+	return entry;
+}
+
+/*
+ * sqlite_get_connection:
+ * Get a connection which can be used to execute queries on
+ * the remote SQLite server with the user's authorization. A new connection
+ * is established if we don't already have a suitable one.
+ */
+sqlite3 *
+sqlite_get_connection(ForeignServer *server, bool truncatable)
+{
+	ConnCacheEntry *entry = sqlite_get_conn_cache_entry(server, truncatable);
 	return entry->conn;
+}
+
+/* OPEN DATABASE GROUP */
+
+/*
+ * sqlite_check:
+ *
+ * Do SQLite integrity check
+ */
+static void
+sqlite_check(sqlite3 *conn, const char *dbpath, const char *mode, const char *schema)
+{
+	char		   *stmt = (char*)palloc0(NAMEDATALEN + 32);
+	char		   *check_res = NULL;
+
+	sprintf(stmt, "PRAGMA \"%s\".%s_check;", schema, mode);
+	check_res = one_string_value (conn, stmt);
+	if (strcmp(check_res, "ok") != 0)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_FDW_UNABLE_TO_ESTABLISH_CONNECTION),
+				 errmsg("%s check failed to for SQLite DB, file '%s': %s", mode, dbpath, check_res)));
+	}
+}
+
+/*
+ * integrity_checks:
+ *
+ * Validate integrity check mode string and runs requested integrity checks
+ */
+static void
+integrity_checks(sqlite3 *conn, const char *dbadr, const char *integrity_check_mode,const char * schema)
+{
+	if (integrity_check_mode == NULL)
+		return;
+	validate_integrity_check_mode (integrity_check_mode);
+
+	if (strcmp(integrity_check_mode, "quick") == 0)
+		sqlite_check(conn, dbadr, "quick", schema);
+	if (strcmp(integrity_check_mode, "full") == 0)
+		sqlite_check(conn, dbadr, "integrity", schema);
+	if (strcmp(integrity_check_mode, "fkeys") == 0)
+	{
+		sqlite_check(conn, dbadr, "integrity", schema);
+	//	sqlite_check(conn, dbadr, "foreign_keys", schema);
+	}
+}
+
+static void
+open_db_fail (sqlite3 *conn, int rc, char *err, const char *dbpath, int step)
+{
+	char	   *perr = pstrdup(err);
+	sqlite3_free(err);
+	sqlite3_close(conn);
+	conn = NULL;
+	ereport(ERROR,
+			(errcode(ERRCODE_FDW_UNABLE_TO_ESTABLISH_CONNECTION),
+			 errmsg("Failed to open SQLite DB, file '%s', SQLite error '%s', result code %d, step %d", dbpath, perr, rc, step)));
 }
 
 /*
@@ -189,38 +419,56 @@ sqlite_get_connection(ForeignServer *server, bool truncatable)
  * and flags of opened file descriptor mode.
  */
 static sqlite3 *
-sqlite_open_db(const char *dbpath, int flags)
+sqlite_open_db(ConnCacheEntry *entry)
 {
 	sqlite3	   *conn = NULL;
 	int			rc;
 	char	   *err;
 	const char *zVfs = NULL;
-	rc = sqlite3_open_v2(dbpath, &conn, flags, zVfs);
+	int			flags = 0;
+
+	if (entry->dbpath == NULL)
+		return NULL;
+	flags = flags | (entry->readonly ? SQLITE_OPEN_READONLY : SQLITE_OPEN_READWRITE);
+	rc = sqlite3_open_v2(entry->dbpath, &conn, flags, zVfs);
 	if (rc != SQLITE_OK)
 		ereport(ERROR,
 				(errcode(ERRCODE_FDW_UNABLE_TO_ESTABLISH_CONNECTION),
-				 errmsg("Failed to open SQLite DB, file '%s', result code %d", dbpath, rc)));
+				 errmsg("Failed to open SQLite DB, file '%s', result code %d", entry->dbpath, rc)));
+
+	/* Do not check intergity in case of readonly mode */
+	if (! entry->readonly)
+		integrity_checks(conn, entry->dbpath, entry->integrity_check_mode, "main");
+	/* Set not default temporary store directory */
+	if (entry->temp_store_directory != NULL)
+	{
+		char		   *stmt = (char*)palloc0(PATH_MAX + 40);
+		sprintf(stmt, "pragma temp_store_directory='%s';", entry->temp_store_directory);
+		rc = sqlite3_exec(conn, stmt,
+					  NULL, NULL, &err);
+		pfree(stmt);
+		if (rc != SQLITE_OK)
+			open_db_fail(conn, rc, err, entry->dbpath, 3);
+	}
+	/* Enable SQLite internal foreign keys support */
+	if (! entry->readonly && entry->foreign_keys)
+	{
+		rc = sqlite3_exec(conn, "pragma foreign_keys=1",
+						  NULL, NULL, &err);
+		if (rc != SQLITE_OK)
+			open_db_fail(conn, rc, err, entry->dbpath, 4);
+	}
 	/* make 'LIKE' of SQLite case sensitive like PostgreSQL */
 	rc = sqlite3_exec(conn, "pragma case_sensitive_like=1",
 					  NULL, NULL, &err);
 	if (rc != SQLITE_OK)
-	{
-		char	   *perr = pstrdup(err);
-
-		sqlite3_free(err);
-		sqlite3_close(conn);
-		conn = NULL;
-		ereport(ERROR,
-				(errcode(ERRCODE_FDW_UNABLE_TO_ESTABLISH_CONNECTION),
-				 errmsg("Failed to open SQLite DB, file '%s', SQLite error '%s', result code %d", dbpath, perr, rc)));
-	}
+		open_db_fail(conn, rc, err, entry->dbpath, 5);
 	/* add included inner SQLite functions from separate c file
 	 * for using in data unifying during deparsing
 	 */
 	sqlite_fdw_data_norm_functs_init(conn);
 	return conn;
 }
-
 
 /*
  * Reset all transient state fields in the cached connection entry and
@@ -229,9 +477,7 @@ sqlite_open_db(const char *dbpath, int flags)
 static void
 sqlite_make_new_connection(ConnCacheEntry *entry, ForeignServer *server)
 {
-	const char *dbpath = NULL;
 	ListCell   *lc;
-	int flags = 0;
 
 	Assert(entry->conn == NULL);
 
@@ -239,8 +485,12 @@ sqlite_make_new_connection(ConnCacheEntry *entry, ForeignServer *server)
 	entry->xact_depth = 0;
 	entry->invalidated = false;
 	entry->stmtList = NULL;
+	entry->dbpath = NULL;
 	entry->keep_connections = true;
 	entry->readonly = false;
+	entry->integrity_check_mode = NULL;
+	entry->temp_store_directory = NULL;
+	entry->foreign_keys = true;
 	entry->server_hashvalue =
 		GetSysCacheHashValue1(FOREIGNSERVEROID,
 							  ObjectIdGetDatum(server->serverid));
@@ -249,17 +499,24 @@ sqlite_make_new_connection(ConnCacheEntry *entry, ForeignServer *server)
 		DefElem	   *def = (DefElem *) lfirst(lc);
 
 		if (strcmp(def->defname, "database") == 0)
-			dbpath = defGetString(def);
+			entry->dbpath = defGetString(def);
 		else if (strcmp(def->defname, "keep_connections") == 0)
 			entry->keep_connections = defGetBoolean(def);
 		else if (strcmp(def->defname, "force_readonly") == 0)
 			entry->readonly = defGetBoolean(def);
+		else if (strcmp(def->defname, "integrity_check") == 0)
+			entry->integrity_check_mode = defGetString(def);
+		else if (strcmp(def->defname, "temp_store_directory") == 0)
+			entry->temp_store_directory = defGetString(def);
+		else if (strcmp(def->defname, "foreign_keys") == 0)
+			entry->foreign_keys = defGetBoolean(def);
 	}
 
-	flags = flags | (entry->readonly ? SQLITE_OPEN_READONLY : SQLITE_OPEN_READWRITE);
 	/* Try to make the connection */
-	entry->conn = sqlite_open_db(dbpath, flags);
+	entry->conn = sqlite_open_db(entry);
 }
+
+/* End of open database group */
 
 /*
  * cleanup_connection:
@@ -390,9 +647,8 @@ sqlite_begin_remote_xact(ConnCacheEntry *entry)
 	}
 }
 
-
 /*
- * Report an sqlite execution error
+ * Report an SQLite execution error
  */
 void
 sqlitefdw_report_error(int elevel, sqlite3_stmt * stmt, sqlite3 * conn,
@@ -419,6 +675,7 @@ sqlitefdw_report_error(int elevel, sqlite3_stmt * stmt, sqlite3 * conn,
 			));
 }
 
+/* XACT GROUP */
 
 /*
  * sqlitefdw_xact_callback --- cleanup at main-transaction end.
@@ -633,6 +890,8 @@ sqlitefdw_subxact_callback(SubXactEvent event, SubTransactionId mySubid,
 	list_free(busy_connection);
 }
 
+/* End of xact group */
+
 /*
  * Connection invalidation callback function
  *
@@ -686,6 +945,8 @@ sqlitefdw_inval_callback(Datum arg, int cacheid, uint32 hashvalue)
 		}
 	}
 }
+
+/* CONNECTION MANAGEMENT GROUP */
 
 /*
  * List active foreign server connections.
@@ -775,7 +1036,6 @@ sqlite_fdw_get_connections(PG_FUNCTION_ARGS)
 
 		server = GetForeignServerExtended(entry->serverid, FSV_MISSING_OK);
 
-
 		/*
 		 * The foreign server may have been dropped in current explicit
 		 * transaction. It is not possible to drop the server from another
@@ -856,11 +1116,8 @@ sqlite_fdw_disconnect(PG_FUNCTION_ARGS)
 			 errmsg("Function %s does not support in Postgres version %s", __func__, PG_VERSION)
 			 ));
 #else
-	ForeignServer *server;
-	char	   *servername;
-
-	servername = text_to_cstring(PG_GETARG_TEXT_PP(0));
-	server = GetForeignServerByName(servername, false);
+	Name			srvname = PG_GETARG_NAME(0);
+	ForeignServer  *server = GetForeignServerByName(srvname->data, false);
 
 	PG_RETURN_BOOL(sqlite_disconnect_cached_connections(server->serverid));
 #endif
@@ -1017,6 +1274,8 @@ sqlite_disconnect_cached_connections(Oid serverid)
 }
 #endif
 
+/* End of connection management group */
+
 /*
  * cache sqlite3 statement to finalize at the end of transaction
  */
@@ -1050,7 +1309,7 @@ sqlite_finalize_list_stmt(List **list)
 	{
 		sqlite3_stmt *stmt = (sqlite3_stmt *) lfirst(lc);
 
-		elog(DEBUG1, "sqlite_fdw: finalize %s", sqlite3_sql(stmt));
+		elog(DEBUG1, "sqlite_fdw: finalize : %s", sqlite3_sql(stmt));
 		sqlite3_finalize(stmt);
 	}
 
@@ -1074,3 +1333,1560 @@ sqlite_append_stmt_to_list(List *list, sqlite3_stmt * stmt)
 	MemoryContextSwitchTo(oldcontext);
 	return list;
 }
+
+/* ATTACHED DATABASES (SCHEMAS) GROUP */
+
+/*
+ * attach_sqlite_db
+ *
+ */
+int
+attach_sqlite_db (ForeignServer* server, sqlite3* conn, const char * dbadr, const Name alias)
+{
+	sqlite3_stmt   *volatile pragma_stmt = NULL;
+	char		   *stmt = (char*)palloc0(NAMEDATALEN * 2 + 32);
+	int				sqlite_id = -1;
+	int				rc = SQLITE_OK;
+	char		   *err;
+
+	sprintf(stmt, "attach database '%s' as \"%.*s\"", dbadr, (int)sizeof(alias->data), alias->data);
+	rc = sqlite3_exec(conn, stmt, NULL, NULL, &err);
+	pfree(stmt);
+	if (rc != SQLITE_OK)
+	{
+		char	   *perr = pstrdup(err);
+		sqlite3_free(err);
+		ereport(ERROR,
+			(errcode(ERRCODE_FDW_UNABLE_TO_ESTABLISH_CONNECTION),
+			 errmsg("Failed to attach SQLite DB, file '%s', SQLite error '%s', result code %d", dbadr, perr, rc)));
+	}
+
+	/* get sqlite_id, control internal SQLite success */
+	sqlite_prepare_wrapper(server, conn, "PRAGMA database_list;", (sqlite3_stmt * *) & pragma_stmt, NULL, false);
+	for (;;)
+	{
+		rc = sqlite3_step(pragma_stmt);
+		if (rc == SQLITE_DONE)
+			break;
+		else if (rc != SQLITE_ROW)
+		{
+			/* Not pass sql_stmt because it is finalized in PG_CATCH */
+			sqlitefdw_report_error(ERROR, NULL, conn, sqlite3_sql(pragma_stmt), rc);
+		}
+		else
+		{
+			sqlite3_value *val_db_id = sqlite3_column_value(pragma_stmt, 0);
+			sqlite3_value *val_alias = sqlite3_column_value(pragma_stmt, 1);
+			char		  *db_alias = NULL;
+
+			if (sqlite3_value_type(val_db_id) == SQLITE_NULL ||
+				sqlite3_value_type(val_alias) == SQLITE_NULL)
+			{
+				sqlite3_finalize(pragma_stmt);
+				ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("\"PRAGMA database_list;\" returns NULL in a field, please check your SQLite configuration")));
+			}
+			db_alias = (char *)sqlite3_value_text(val_alias);
+			if (strcmp(alias->data, db_alias) == 0)
+			{
+				sqlite_id = sqlite3_value_int(val_db_id);
+				break;
+			}
+		}
+	}
+	sqlite3_finalize(pragma_stmt);
+	pragma_stmt = NULL;
+	return sqlite_id;
+}
+
+/*
+ * sqlite_fdw_db_attach:
+ * 		Attach outer database.
+ */
+Datum
+sqlite_fdw_db_attach(PG_FUNCTION_ARGS)
+{
+	ConnCacheEntry *cce;
+	ForeignServer  *server;
+	Name			srvname = PG_GETARG_NAME(0);
+	char		   *dbadr = text_to_cstring(PG_GETARG_TEXT_PP(1));
+	Name			alias = PG_GETARG_NAME(2);
+	Oid				userid = GetUserId();
+	int				sqlite_id = -1;
+	char		   *integrity_check_mode = text_to_cstring(PG_GETARG_TEXT_PP(3));
+
+	elog(DEBUG1, "sqlite_fdw : %s attach db %s as \"%.*s\"", __func__, dbadr, (int)sizeof(alias->data), alias->data);
+	server = GetForeignServerByName(srvname->data, false);
+
+	/* Check if current user executing the function is foreign server owner or superuser */
+	if (!superuser_arg(userid) && userid != server->owner)
+	{
+		ereport(ERROR,
+			(errcode(ERRCODE_FDW_UNABLE_TO_ESTABLISH_CONNECTION),
+			 errmsg("Only supersuser or owner of the foreign server can attach a schema!")));
+	}
+
+	cce = sqlite_get_conn_cache_entry(server, false);
+	sqlite_id = attach_sqlite_db (server, cce->conn, dbadr, alias);
+	integrity_checks(cce->conn, dbadr, integrity_check_mode, alias->data);
+	PG_RETURN_INT32(sqlite_id);
+}
+
+/*
+ * detach_sqlite_db
+ *
+ */
+void
+detach_sqlite_db (ForeignServer* server, sqlite3* conn, const Name alias)
+{
+	char		   *stmt = (char*)palloc0(NAMEDATALEN * 2 + 32);
+	int				rc = SQLITE_OK;
+	char		   *err;
+	sprintf(stmt, "detach database \"%.*s\"", (int)sizeof(alias->data), alias->data);
+	rc = sqlite3_exec(conn, stmt, NULL, NULL, &err);
+	pfree(stmt);
+	if (rc != SQLITE_OK)
+	{
+		char	   *perr = pstrdup(err);
+		sqlite3_free(err);
+		ereport(ERROR,
+			(errcode(ERRCODE_FDW_UNABLE_TO_ESTABLISH_CONNECTION),
+			 errmsg("Failed to detach SQLite DB %.*s, SQLite error '%s', result code %d", (int)sizeof(alias->data), alias->data, perr, rc)));
+	}
+}
+
+/*
+ * sqlite_fdw_db_detach:
+ * 		Detach outer database.
+ */
+Datum
+sqlite_fdw_db_detach(PG_FUNCTION_ARGS)
+{
+	ConnCacheEntry *cce;
+	ForeignServer  *server;
+	Name			srvname = PG_GETARG_NAME(0);
+	Name			alias = PG_GETARG_NAME(1);
+	Oid				userid = GetUserId();
+
+	elog(DEBUG1, "sqlite_fdw : %s detach db as \"%.*s\"", __func__, (int)sizeof(alias->data), alias->data);
+	server = GetForeignServerByName(srvname->data, false);
+
+	/* Check if current user executing the function is foreign server owner or superuser */
+	if (!superuser_arg(userid) && userid != server->owner)
+	{
+		ereport(ERROR,
+			(errcode(ERRCODE_FDW_UNABLE_TO_ESTABLISH_CONNECTION),
+			 errmsg("Only supersuser or owner of the foreign server can detach a schema!")));
+	}
+
+	cce = sqlite_get_conn_cache_entry(server, false);
+	detach_sqlite_db (server, cce->conn, alias);
+	PG_RETURN_VOID();
+}
+
+/*
+ * sqlite_fdw_db_list:
+ *
+ * List all attached SQLite databases
+ *
+ */
+Datum
+sqlite_fdw_db_list(PG_FUNCTION_ARGS)
+{
+#define SQLITE_FDW_LIST_DB_COLS	5
+	ReturnSetInfo  *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	sqlite3_stmt   *volatile pragma_stmt = NULL;
+	int				rc = SQLITE_OK;
+#if PG_VERSION_NUM < 150000
+	TupleDesc		tupdesc;
+	Tuplestorestate *tupstore;
+	MemoryContext	per_query_ctx;
+	MemoryContext	oldcontext;
+#endif
+	Name			srvname = PG_GETARG_NAME(0);
+	ForeignServer  *server = GetForeignServerByName(srvname->data, false);
+	sqlite3		   *db = sqlite_get_connection(server, false);
+
+#if PG_VERSION_NUM >= 160000
+	InitMaterializedSRF(fcinfo, 0);
+#elif PG_VERSION_NUM >= 150000
+	SetSingleFuncCall(fcinfo, 0);
+#else
+	/* check to see if caller supports us returning a tuplestore */
+	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("set-valued function called in context that cannot accept a set")));
+	if (!(rsinfo->allowedModes & SFRM_Materialize))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("materialize mode required, but it is not allowed in this context")));
+
+	/* Build a tuple descriptor for our result type */
+	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+		elog(ERROR, "return type must be a row type");
+
+	/* Build tuplestore to hold the result rows */
+	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
+	oldcontext = MemoryContextSwitchTo(per_query_ctx);
+
+	tupstore = tuplestore_begin_heap(true, false, work_mem);
+	rsinfo->returnMode = SFRM_Materialize;
+	rsinfo->setResult = tupstore;
+	rsinfo->setDesc = tupdesc;
+
+	MemoryContextSwitchTo(oldcontext);
+#endif
+
+	sqlite_prepare_wrapper(server, db, "PRAGMA database_list;", (sqlite3_stmt * *) & pragma_stmt, NULL, false);
+
+	for (;;)
+	{
+		Datum		values[SQLITE_FDW_LIST_DB_COLS] = {0};
+		bool		nulls[SQLITE_FDW_LIST_DB_COLS] = {0};
+
+		rc = sqlite3_step(pragma_stmt);
+		if (rc == SQLITE_DONE)
+			break;
+		else if (rc != SQLITE_ROW)
+		{
+			/* Not pass sql_stmt because it is finalized in PG_CATCH */
+			sqlitefdw_report_error(ERROR, NULL, db, sqlite3_sql(pragma_stmt), rc);
+		}
+		else
+		{
+			char		   *db_alias = NULL;
+			char		   *fname = NULL;
+			int				bRdonly;
+			int				eTxn;
+			sqlite3_value  *val_db_id = sqlite3_column_value(pragma_stmt, 0);
+			sqlite3_value  *val_alias = sqlite3_column_value(pragma_stmt, 1);
+			sqlite3_value  *val_file_addr = sqlite3_column_value(pragma_stmt, 2);
+
+			if (sqlite3_value_type(val_db_id) == SQLITE_NULL ||
+				sqlite3_value_type(val_alias) == SQLITE_NULL ||
+				sqlite3_value_type(val_file_addr) == SQLITE_NULL)
+			{
+				ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("\"PRAGMA database_list;\" returns NULL in a field, please check your SQLite configuration")));
+			}
+
+			/* sqlite_id int */
+			values[0] = Int32GetDatum(sqlite3_value_int(val_db_id));
+
+			/* alias name */
+			db_alias = (char *) sqlite3_value_text(val_alias);
+			values[1] = CStringGetNameDatum(db_alias);
+
+			/* file text */
+			fname = (char *)sqlite3_value_text(val_file_addr);
+			values[2] = CStringGetTextDatum(fname);
+
+			/* readonly bool */
+			bRdonly = sqlite3_db_readonly(db, db_alias);
+			if (bRdonly == -1)
+			{
+				nulls[3] = true;
+			}
+			else
+			{
+				values[3] = BoolGetDatum(bRdonly);
+			}
+
+			/*  txn varchar(5) */
+			eTxn = sqlite3_txn_state(db, db_alias);
+			values[4] = CStringGetTextDatum(
+				eTxn == SQLITE_TXN_NONE ? "none" :
+				eTxn == SQLITE_TXN_READ ? "read" :
+				"write");
+#if PG_VERSION_NUM >= 150000
+			tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc, values, nulls);
+#else
+			tuplestore_putvalues(tupstore, tupdesc, values, nulls);
+#endif
+		}
+	}
+	sqlite3_finalize(pragma_stmt);
+	pragma_stmt = NULL;
+#if PG_VERSION_NUM < 150000
+	/* clean up and return the tuplestore */
+	tuplestore_donestoring(tupstore);
+#endif
+	PG_RETURN_VOID();
+}
+
+/* End of attached databases (schemas) group */
+
+/* GENERAL SQLITE DATABASE FILE METADATA GROUP */
+
+/*
+ * sqlite_fdw_db_encoding:
+ *
+ * Gets encoding of the SQLite database and all of attaced databases
+ *
+ */
+Datum
+sqlite_fdw_db_encoding(PG_FUNCTION_ARGS)
+{
+	Name			srvname = PG_GETARG_NAME(0);
+	ForeignServer  *server = GetForeignServerByName(srvname->data, false);
+	sqlite3		   *db = sqlite_get_connection(server, false);
+	char		   *enc = one_string_value (db, "PRAGMA encoding;");
+
+	if ( enc == NULL )
+		PG_RETURN_NULL();
+	else
+		PG_RETURN_TEXT_P(cstring_to_text(enc));
+}
+
+/*
+ * sqlite_fdw_db_schema_version:
+ *
+ * Returns schema version - number of changes in database, something like LSN.
+ *
+ */
+Datum
+sqlite_fdw_db_schema_version(PG_FUNCTION_ARGS)
+{
+	Name			srvname = PG_GETARG_NAME(0);
+	Name			alias = PG_GETARG_NAME(1);
+	char*			schema = alias->data;
+	ForeignServer  *server = GetForeignServerByName(srvname->data, false);
+	sqlite3		   *db = sqlite_get_connection(server, false);
+	char		   *stmt = (char*)palloc0(NAMEDATALEN + 32);
+	int		  	 	res = -1;
+
+	sprintf(stmt, "PRAGMA \"%s\".schema_version;", schema);
+	res = one_integer_value (db, stmt);
+	if ( res == -1 )
+		PG_RETURN_NULL();
+	else
+		PG_RETURN_INT32(res);
+}
+
+/*
+ * sqlite_fdw_db_user_version:
+ *
+ * Returns user version - integer for outer usage.
+ *
+ */
+Datum
+sqlite_fdw_db_user_version(PG_FUNCTION_ARGS)
+{
+	Name			srvname = PG_GETARG_NAME(0);
+	Name			alias = PG_GETARG_NAME(1);
+	char*			schema = alias->data;
+	ForeignServer  *server = GetForeignServerByName(srvname->data, false);
+	sqlite3		   *db = sqlite_get_connection(server, false);
+	char		   *stmt = (char*)palloc0(NAMEDATALEN + 32);
+	int		  	 	res = -1;
+
+	sprintf(stmt, "PRAGMA \"%s\".user_version;", schema);
+	res = one_integer_value (db, stmt);
+	if ( res == -1 )
+		PG_RETURN_NULL();
+	else
+		PG_RETURN_INT32(res);
+}
+
+/*
+ * sqlite_fdw_db_application_id:
+ *
+ * Returns application id code - integer file subtype of database could means like OGC GeoPackage file, MBTiles tileset, TeXnicard file etc.
+ *
+ */
+Datum
+sqlite_fdw_db_application_id(PG_FUNCTION_ARGS)
+{
+	Name			srvname = PG_GETARG_NAME(0);
+	Name			alias = PG_GETARG_NAME(1);
+	char*			schema = alias->data;
+	ForeignServer  *server = GetForeignServerByName(srvname->data, false);
+	sqlite3		   *db = sqlite_get_connection(server, false);
+	char		   *stmt = (char*)palloc0(NAMEDATALEN + 32);
+	int		  	 	res = -1;
+
+	sprintf(stmt, "PRAGMA \"%s\".application_id;", schema);
+	res = one_integer_value (db, stmt);
+	if ( res == -1 )
+		PG_RETURN_NULL();
+	else
+		PG_RETURN_INT32(res);
+}
+/* End of SQLite database file metadata group */
+
+/* JOURNAL GROUP */
+
+/*
+ * sqlite_fdw_db_journal_mode:
+ *
+ * Returns journal mode of the SQLite database.
+ *
+ */
+Datum
+sqlite_fdw_db_journal_mode(PG_FUNCTION_ARGS)
+{
+	Name			srvname = PG_GETARG_NAME(0);
+	Name			alias = PG_GETARG_NAME(1);
+	char*			schema = alias->data;
+	ForeignServer  *server = GetForeignServerByName(srvname->data, false);
+	sqlite3		   *db = sqlite_get_connection(server, false);
+	char		   *stmt = (char*)palloc0(NAMEDATALEN + 32);
+	char		   *res = NULL;
+
+	sprintf(stmt, "PRAGMA \"%s\".journal_mode;", schema);
+	res = one_string_value (db, stmt);
+	if ( res == NULL )
+		PG_RETURN_NULL();
+	else
+		PG_RETURN_TEXT_P(cstring_to_text(res));
+}
+
+/*
+ * sqlite_fdw_db_journal_size_limit:
+ *
+ * Returns journal size limit in bytes.
+ *
+ */
+Datum
+sqlite_fdw_db_journal_size_limit(PG_FUNCTION_ARGS)
+{
+	Name			srvname = PG_GETARG_NAME(0);
+	Name			alias = PG_GETARG_NAME(1);
+	char*			schema = alias->data;
+	ForeignServer  *server = GetForeignServerByName(srvname->data, false);
+	sqlite3		   *db = sqlite_get_connection(server, false);
+	char		   *stmt = (char*)palloc0(NAMEDATALEN + 32);
+	int		  	 	res = -1;
+
+	sprintf(stmt, "PRAGMA \"%s\".journal_size_limit;", schema);
+	res = one_integer_value (db, stmt);
+	if ( res == -1 )
+		PG_RETURN_NULL();
+	else
+		PG_RETURN_INT32(res);
+}
+
+/*
+ * sqlite_fdw_db_synchronous_mode:
+ *
+ * Returns synchronous mode of the SQLite database.
+ *
+ */
+Datum
+sqlite_fdw_db_synchronous_mode(PG_FUNCTION_ARGS)
+{
+	Name			srvname = PG_GETARG_NAME(0);
+	Name			alias = PG_GETARG_NAME(1);
+	char*			schema = alias->data;
+	ForeignServer  *server = GetForeignServerByName(srvname->data, false);
+	sqlite3		   *db = sqlite_get_connection(server, false);
+	char		   *stmt = (char*)palloc0(NAMEDATALEN + 32);
+	int		  	 	res = -1;
+
+	sprintf(stmt, "PRAGMA \"%s\".synchronous;", schema);
+	res = one_integer_value (db, stmt);
+	if ( res == 0 )
+		PG_RETURN_TEXT_P(cstring_to_text("off"));
+	if ( res == 1 )
+		PG_RETURN_TEXT_P(cstring_to_text("on"));
+	if ( res == 2 )
+		PG_RETURN_TEXT_P(cstring_to_text("normal"));
+	if ( res == 3 )
+		PG_RETURN_TEXT_P(cstring_to_text("full"));
+	if ( res == 4 )
+		PG_RETURN_TEXT_P(cstring_to_text("extra"));
+	PG_RETURN_NULL();
+}
+
+/* End of journal group */
+
+/* METADATA INFO GROUP */
+
+/*
+ * sqlite_fdw_table_info:
+ *
+ * Returns formal table info from SQLite
+ *
+ */
+Datum
+sqlite_fdw_table_info(PG_FUNCTION_ARGS)
+{
+#define SQLITE_FDW_TABLE_INFO_COLS	7
+	ReturnSetInfo  *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	sqlite3_stmt   *volatile pragma_stmt = NULL;
+	char		   *stmt = (char*)palloc0(NAMEDATALEN * 2 + 32);
+#if PG_VERSION_NUM < 150000
+	TupleDesc		tupdesc;
+	Tuplestorestate *tupstore;
+	MemoryContext	per_query_ctx;
+	MemoryContext	oldcontext;
+#endif
+	Name			srvname = PG_GETARG_NAME(0);
+	ForeignServer  *server = GetForeignServerByName(srvname->data, false);
+	sqlite3		   *db = sqlite_get_connection(server, false);
+	Name			table = PG_GETARG_NAME(1);
+	Name			schema = PG_GETARG_NAME(2);
+#if PG_VERSION_NUM >= 160000
+	InitMaterializedSRF(fcinfo, 0);
+#elif PG_VERSION_NUM >= 150000
+	SetSingleFuncCall(fcinfo, 0);
+#else
+	/* check to see if caller supports us returning a tuplestore */
+	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("set-valued function called in context that cannot accept a set")));
+	if (!(rsinfo->allowedModes & SFRM_Materialize))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("materialize mode required, but it is not allowed in this context")));
+
+	/* Build a tuple descriptor for our result type */
+	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+		elog(ERROR, "return type must be a row type");
+
+	/* Build tuplestore to hold the result rows */
+	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
+	oldcontext = MemoryContextSwitchTo(per_query_ctx);
+
+	tupstore = tuplestore_begin_heap(true, false, work_mem);
+	rsinfo->returnMode = SFRM_Materialize;
+	rsinfo->setResult = tupstore;
+	rsinfo->setDesc = tupdesc;
+
+	MemoryContextSwitchTo(oldcontext);
+#endif
+
+	sprintf(stmt, "PRAGMA \"%s\".table_xinfo (\"%s\");", schema->data, table->data);
+	sqlite_prepare_wrapper(server, db, stmt, (sqlite3_stmt * *) & pragma_stmt, NULL, false);
+
+	for (;;)
+	{
+		Datum			values[SQLITE_FDW_TABLE_INFO_COLS] = {0};
+		bool			nulls[SQLITE_FDW_TABLE_INFO_COLS] = {0};
+		int				rc = sqlite3_step(pragma_stmt);
+		if (rc == SQLITE_DONE)
+			break;
+		else if (rc != SQLITE_ROW)
+		{
+			/* Not pass sql_stmt because it is finalized in PG_CATCH */
+			sqlitefdw_report_error(ERROR, NULL, db, sqlite3_sql(pragma_stmt), rc);
+		}
+		else
+		{
+/*	Comment from SQLite code:
+ *	** cid:        Column id (numbered from left to right, starting at 0)
+ *  ** name:       Column name
+ *  ** type:       Column declaration type.
+ *	** notnull:    True if 'NOT NULL' is part of column declaration
+ *	** dflt_value: The default value for the column, if any.
+ *	** pk:         Non-zero for PK fields.
+ * +++ col_mode:  column implementation type, from xinfo */
+			char		   *name = NULL;
+			char		   *type = NULL;
+			int				nn_int = -1;
+			int				pk_int = -1;
+			int				col_mode = -1;
+			sqlite3_value  *val_cid = sqlite3_column_value(pragma_stmt, 0);
+			sqlite3_value  *val_name = sqlite3_column_value(pragma_stmt, 1);
+			sqlite3_value  *val_type = sqlite3_column_value(pragma_stmt, 2);
+			sqlite3_value  *val_notnull = sqlite3_column_value(pragma_stmt, 3);
+			sqlite3_value  *val_dflt_value = sqlite3_column_value(pragma_stmt, 4);
+			sqlite3_value  *val_pk = sqlite3_column_value(pragma_stmt, 5);
+			sqlite3_value  *val_col_mode = sqlite3_column_value(pragma_stmt, 6);
+
+			if (sqlite3_value_type(val_cid) == SQLITE_NULL ||
+				sqlite3_value_type(val_name) == SQLITE_NULL ||
+				sqlite3_value_type(val_type) == SQLITE_NULL ||
+				sqlite3_value_type(val_notnull) == SQLITE_NULL ||
+				sqlite3_value_type(val_pk) == SQLITE_NULL)
+			{
+				ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("\"%s\" returns NULL in a field, please check your SQLite configuration", stmt)));
+			}
+
+			/* cid:        Column id (numbered from left to right, starting at 0) */
+			values[0] = Int32GetDatum(sqlite3_value_int(val_cid));
+			/* name:       Column name */
+			name = sqlite_text_value_to_pg_db_encoding(val_name);
+			values[1] = CStringGetNameDatum(name);
+			/* type:       Column declaration type. */
+			type = sqlite_text_value_to_pg_db_encoding(val_type);
+			if (strcmp(type, "") == 0)
+				nulls[2] = true;
+			else
+				values[2] = CStringGetTextDatum(type);
+			/* notnull:    True if 'NOT NULL' is part of column declaration */
+			nn_int = sqlite3_value_int(val_notnull);
+			values[3] = BoolGetDatum(nn_int == 1);
+			/* dflt_value: The default value for the column, if any. */
+			if (sqlite3_value_type(val_dflt_value) == SQLITE_NULL)
+				nulls[4] = true;
+			else
+			{
+				char * def = sqlite_text_value_to_pg_db_encoding(val_dflt_value);
+				values[4] = CStringGetTextDatum(def);
+			}
+			/* pk:         Non-zero for PK fields. */
+			pk_int = sqlite3_value_int(val_pk);
+			values[5] = BoolGetDatum(pk_int == 1);
+			/* normal column (0),
+			 * a dynamic or stored generated column (2 or 3),
+			 * or a hidden column in a virtual table (1).
+			 */
+			col_mode = sqlite3_value_int(val_col_mode);
+			if (col_mode == 0)
+				values[6] = CStringGetTextDatum("normal");
+			else if (col_mode == 1)
+				values[6] = CStringGetTextDatum("hidden+vtbl");
+			else if (col_mode == 2)
+				values[6] = CStringGetTextDatum("gen dynamic");
+			else if (col_mode == 3)
+				values[6] = CStringGetTextDatum("gen stored");
+			else
+				nulls[6] = true;
+#if PG_VERSION_NUM >= 150000
+			tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc, values, nulls);
+#else
+			tuplestore_putvalues(tupstore, tupdesc, values, nulls);
+#endif
+		}
+	}
+	sqlite3_finalize(pragma_stmt);
+	pragma_stmt = NULL;
+#if PG_VERSION_NUM < 150000
+	/* clean up and return the tuplestore */
+	tuplestore_donestoring(tupstore);
+#endif
+	PG_RETURN_VOID();
+}
+
+/*
+ * sqlite_fdw_rel_list:
+ *
+ * Returns list of relations in a SQLite database
+ *
+ */
+Datum
+sqlite_fdw_rel_list(PG_FUNCTION_ARGS)
+{
+#define SQLITE_FDW_REL_LIST_COLS	6
+	ReturnSetInfo  *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	sqlite3_stmt   *volatile pragma_stmt = NULL;
+	char		   *stmt = (char*)palloc0(NAMEDATALEN * 2 + 32);
+#if PG_VERSION_NUM < 150000
+	TupleDesc		tupdesc;
+	Tuplestorestate *tupstore;
+	MemoryContext	per_query_ctx;
+	MemoryContext	oldcontext;
+#endif
+	Name			srvname = PG_GETARG_NAME(0);
+	ForeignServer  *server = GetForeignServerByName(srvname->data, false);
+	sqlite3		   *db = sqlite_get_connection(server, false);
+	Name			schema = PG_GETARG_NAME(1);
+#if PG_VERSION_NUM >= 160000
+	InitMaterializedSRF(fcinfo, 0);
+#elif PG_VERSION_NUM >= 150000
+	SetSingleFuncCall(fcinfo, 0);
+#else
+	/* check to see if caller supports us returning a tuplestore */
+	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("set-valued function called in context that cannot accept a set")));
+	if (!(rsinfo->allowedModes & SFRM_Materialize))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("materialize mode required, but it is not allowed in this context")));
+
+	/* Build a tuple descriptor for our result type */
+	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+		elog(ERROR, "return type must be a row type");
+
+	/* Build tuplestore to hold the result rows */
+	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
+	oldcontext = MemoryContextSwitchTo(per_query_ctx);
+
+	tupstore = tuplestore_begin_heap(true, false, work_mem);
+	rsinfo->returnMode = SFRM_Materialize;
+	rsinfo->setResult = tupstore;
+	rsinfo->setDesc = tupdesc;
+
+	MemoryContextSwitchTo(oldcontext);
+#endif
+
+	sprintf(stmt, "PRAGMA \"%s\".table_list;", schema->data);
+	sqlite_prepare_wrapper(server, db, stmt, (sqlite3_stmt * *) & pragma_stmt, NULL, false);
+
+	for (;;)
+	{
+		Datum			values[SQLITE_FDW_REL_LIST_COLS] = {0};
+		bool			nulls[SQLITE_FDW_REL_LIST_COLS] = {0};
+		int				rc = sqlite3_step(pragma_stmt);
+		if (rc == SQLITE_DONE)
+			break;
+		else if (rc != SQLITE_ROW)
+		{
+			/* Not pass sql_stmt because it is finalized in PG_CATCH */
+			sqlitefdw_report_error(ERROR, NULL, db, sqlite3_sql(pragma_stmt), rc);
+		}
+		else
+		{
+/*	Comment from SQLite code:
+ * ** schema:     Name of attached database hold this table
+ * ** name:       Name of the table itself
+ * ** type:       "table", "view", "virtual", "shadow"
+ * ** ncol:       Number of columns
+ * ** wr:         True for a WITHOUT ROWID table
+ * ** strict:     True for a STRICT table
+ */
+			char		   *schema_out = NULL;
+			char		   *name = NULL;
+			char		   *type = NULL;
+			int				ncol = 0;
+			int				wr_int = -1;
+			int				strict_int = -1;
+			sqlite3_value  *val_schema = sqlite3_column_value(pragma_stmt, 0);
+			sqlite3_value  *val_name = sqlite3_column_value(pragma_stmt, 1);
+			sqlite3_value  *val_type = sqlite3_column_value(pragma_stmt, 2);
+			sqlite3_value  *val_ncol = sqlite3_column_value(pragma_stmt, 3);
+			sqlite3_value  *val_wr = sqlite3_column_value(pragma_stmt, 4);
+			sqlite3_value  *val_strict = sqlite3_column_value(pragma_stmt, 5);
+
+			if (sqlite3_value_type(val_schema) == SQLITE_NULL ||
+				sqlite3_value_type(val_name) == SQLITE_NULL ||
+				sqlite3_value_type(val_type) == SQLITE_NULL ||
+				sqlite3_value_type(val_ncol) == SQLITE_NULL ||
+				sqlite3_value_type(val_wr) == SQLITE_NULL ||
+				sqlite3_value_type(val_strict) == SQLITE_NULL)
+			{
+				ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("\"%s\" returns NULL in a field, please check your SQLite configuration", stmt)));
+			}
+
+			/* schema:     Name of attached database hold this table */
+			schema_out = sqlite_text_value_to_pg_db_encoding(val_schema);
+			values[0] = CStringGetNameDatum(schema_out);
+			/* name:       Name of the table itselfname: */
+			name = sqlite_text_value_to_pg_db_encoding(val_name);
+			values[1] = CStringGetNameDatum(name);
+			/* type:       "table", "view", "virtual", "shadow" */
+			type = sqlite_text_value_to_pg_db_encoding(val_type);
+			if (strcmp(type, "") == 0)
+				nulls[2] = true;
+			else
+				values[2] = CStringGetTextDatum(type);
+			/* ncol:       Number of columns */
+			ncol = sqlite3_value_int(val_ncol);
+			values[3] = Int32GetDatum(ncol);
+			/* wr:         True for a WITHOUT ROWID table */
+			wr_int = sqlite3_value_int(val_wr);
+			values[4] = BoolGetDatum(wr_int == 1);
+			/* strict:     True for a STRICT table type: */
+			strict_int = sqlite3_value_int(val_strict);
+			values[5] = BoolGetDatum(strict_int == 1);
+#if PG_VERSION_NUM >= 150000
+			tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc, values, nulls);
+#else
+			tuplestore_putvalues(tupstore, tupdesc, values, nulls);
+#endif
+		}
+	}
+	sqlite3_finalize(pragma_stmt);
+	pragma_stmt = NULL;
+#if PG_VERSION_NUM < 150000
+	/* clean up and return the tuplestore */
+	tuplestore_donestoring(tupstore);
+#endif
+	PG_RETURN_VOID();
+}
+
+/*
+ * sqlite_fdw_index_list:
+ *
+ * Returns list of indexes in a SQLite database
+ *
+ */
+Datum
+sqlite_fdw_index_list(PG_FUNCTION_ARGS)
+{
+#define SQLITE_FDW_IDX_LIST_COLS	5
+	ReturnSetInfo  *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	sqlite3_stmt   *volatile pragma_stmt = NULL;
+	char		   *stmt = (char*)palloc0(NAMEDATALEN * 2 + 32);
+#if PG_VERSION_NUM < 150000
+	TupleDesc		tupdesc;
+	Tuplestorestate *tupstore;
+	MemoryContext	per_query_ctx;
+	MemoryContext	oldcontext;
+#endif
+	Name			srvname = PG_GETARG_NAME(0);
+	ForeignServer  *server = GetForeignServerByName(srvname->data, false);
+	sqlite3		   *db = sqlite_get_connection(server, false);
+	Name			table = PG_GETARG_NAME(1);
+	Name			schema = PG_GETARG_NAME(2);
+#if PG_VERSION_NUM >= 160000
+	InitMaterializedSRF(fcinfo, 0);
+#elif PG_VERSION_NUM >= 150000
+	SetSingleFuncCall(fcinfo, 0);
+#else
+	/* check to see if caller supports us returning a tuplestore */
+	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("set-valued function called in context that cannot accept a set")));
+	if (!(rsinfo->allowedModes & SFRM_Materialize))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("materialize mode required, but it is not allowed in this context")));
+
+	/* Build a tuple descriptor for our result type */
+	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+		elog(ERROR, "return type must be a row type");
+
+	/* Build tuplestore to hold the result rows */
+	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
+	oldcontext = MemoryContextSwitchTo(per_query_ctx);
+
+	tupstore = tuplestore_begin_heap(true, false, work_mem);
+	rsinfo->returnMode = SFRM_Materialize;
+	rsinfo->setResult = tupstore;
+	rsinfo->setDesc = tupdesc;
+
+	MemoryContextSwitchTo(oldcontext);
+#endif
+
+	sprintf(stmt, "PRAGMA \"%s\".index_list (\"%s\");", schema->data, table->data);
+	sqlite_prepare_wrapper(server, db, stmt, (sqlite3_stmt * *) & pragma_stmt, NULL, false);
+
+	for (;;)
+	{
+		Datum			values[SQLITE_FDW_IDX_LIST_COLS] = {0};
+		bool			nulls[SQLITE_FDW_IDX_LIST_COLS] = {0};
+		int				rc = sqlite3_step(pragma_stmt);
+		if (rc == SQLITE_DONE)
+			break;
+		else if (rc != SQLITE_ROW)
+		{
+			/* Not pass sql_stmt because it is finalized in PG_CATCH */
+			sqlitefdw_report_error(ERROR, NULL, db, sqlite3_sql(pragma_stmt), rc);
+		}
+		else
+		{
+/*	Comment from SQLite code:
+ *		   i,
+ *         pIdx->zName,
+ *         IsUniqueIndex(pIdx),
+ *         azOrigin[pIdx->idxType],
+ *         pIdx->pPartIdxWhere!=0);
+ */
+			char		   *name = NULL;
+			char		   *source = NULL;
+			int				sqlite_id = -1;
+			int				unique_int = -1;
+			int				partial_int = -1;
+			sqlite3_value  *val_sqlite_id = sqlite3_column_value(pragma_stmt, 0);
+			sqlite3_value  *val_name = sqlite3_column_value(pragma_stmt, 1);
+			sqlite3_value  *val_unique = sqlite3_column_value(pragma_stmt, 2);
+			sqlite3_value  *val_source = sqlite3_column_value(pragma_stmt, 3);
+			sqlite3_value  *val_partial = sqlite3_column_value(pragma_stmt, 4);
+
+			if (sqlite3_value_type(val_sqlite_id) == SQLITE_NULL ||
+				sqlite3_value_type(val_name) == SQLITE_NULL ||
+				sqlite3_value_type(val_unique) == SQLITE_NULL ||
+				sqlite3_value_type(val_source) == SQLITE_NULL ||
+				sqlite3_value_type(val_partial) == SQLITE_NULL)
+			{
+				ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("\"%s\" returns NULL in a field, please check your SQLite configuration", stmt)));
+			}
+
+			/* A sequence number assigned to each index for internal tracking purposes. */
+			sqlite_id = sqlite3_value_int(val_sqlite_id);
+			values[0] = Int32GetDatum(sqlite_id);
+			/* The name of the index. */
+			name = sqlite_text_value_to_pg_db_encoding(val_name);
+			values[1] = CStringGetNameDatum(name);
+			/*     "1" if the index is UNIQUE and "0" if not. */
+			unique_int = sqlite3_value_int(val_unique);
+			values[2] = BoolGetDatum(unique_int == 1);
+			/* "c" if the index was created by a CREATE INDEX statement,
+			 * "u" if the index was created by a UNIQUE constraint, or
+			 * "pk" if the index was created by a PRIMARY KEY constraint.
+			 */
+			source = sqlite_text_value_to_pg_db_encoding(val_source);
+			values[3] = CStringGetTextDatum(source);
+			/*     "1" if the index is a partial index and "0" if not. */
+			partial_int = sqlite3_value_int(val_partial);
+			values[4] = BoolGetDatum(partial_int == 1);
+#if PG_VERSION_NUM >= 150000
+			tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc, values, nulls);
+#else
+			tuplestore_putvalues(tupstore, tupdesc, values, nulls);
+#endif
+		}
+	}
+	sqlite3_finalize(pragma_stmt);
+	pragma_stmt = NULL;
+#if PG_VERSION_NUM < 150000
+	/* clean up and return the tuplestore */
+	tuplestore_donestoring(tupstore);
+#endif
+	PG_RETURN_VOID();
+}
+
+/* End of metadata info group */
+
+/* SQLITE FOREIGN KEYS GROUP */
+
+/*
+ * sqlite_fdw_db_fk:
+ *
+ * Returns true if foreign keys is on.
+ *
+ */
+Datum
+sqlite_fdw_db_fkeys(PG_FUNCTION_ARGS)
+{
+	Name			srvname = PG_GETARG_NAME(0);
+	Name			alias = PG_GETARG_NAME(1);
+	char*			schema = alias->data;
+	ForeignServer  *server = GetForeignServerByName(srvname->data, false);
+	sqlite3		   *db = sqlite_get_connection(server, false);
+	char		   *stmt = (char*)palloc0(NAMEDATALEN + 32);
+	int		  	 	res = -1;
+
+	sprintf(stmt, "PRAGMA \"%s\".foreign_keys;", schema);
+	res = one_integer_value (db, stmt);
+	if ( res == -1 )
+		PG_RETURN_NULL();
+	else
+		PG_RETURN_BOOL(res == 1);
+}
+
+/*
+ * sqlite_fdw_foreign_key_check:
+ *
+ * Returns records not passing foreign key constaint
+ *
+ */
+Datum
+sqlite_fdw_db_fkeys_check(PG_FUNCTION_ARGS)
+{
+#define SQLITE_FDW_FK_CHECK_COLS	8
+	ReturnSetInfo  *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	sqlite3_stmt   *volatile pragma_stmt = NULL;
+	char		   *stmt = (char*)palloc0(NAMEDATALEN * 2 + 32);
+#if PG_VERSION_NUM < 150000
+	TupleDesc		tupdesc;
+	Tuplestorestate *tupstore;
+	MemoryContext	per_query_ctx;
+	MemoryContext	oldcontext;
+#endif
+	Name			srvname = PG_GETARG_NAME(0);
+	ForeignServer  *server = GetForeignServerByName(srvname->data, false);
+	sqlite3		   *db = sqlite_get_connection(server, false);
+	Name			table = PG_GETARG_NAME(1);
+	Name			schema = PG_GETARG_NAME(2);
+#if PG_VERSION_NUM >= 160000
+	InitMaterializedSRF(fcinfo, 0);
+#elif PG_VERSION_NUM >= 150000
+	SetSingleFuncCall(fcinfo, 0);
+#else
+	/* check to see if caller supports us returning a tuplestore */
+	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("set-valued function called in context that cannot accept a set")));
+	if (!(rsinfo->allowedModes & SFRM_Materialize))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("materialize mode required, but it is not allowed in this context")));
+
+	/* Build a tuple descriptor for our result type */
+	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+		elog(ERROR, "return type must be a row type");
+
+	/* Build tuplestore to hold the result rows */
+	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
+	oldcontext = MemoryContextSwitchTo(per_query_ctx);
+
+	tupstore = tuplestore_begin_heap(true, false, work_mem);
+	rsinfo->returnMode = SFRM_Materialize;
+	rsinfo->setResult = tupstore;
+	rsinfo->setDesc = tupdesc;
+
+	MemoryContextSwitchTo(oldcontext);
+#endif
+
+	sprintf(stmt, "PRAGMA \"%s\".foreign_key_check(\"%s\");", schema->data, table->data);
+	sqlite_prepare_wrapper(server, db, stmt, (sqlite3_stmt * *) & pragma_stmt, NULL, false);
+
+	for (;;)
+	{
+		Datum			values[SQLITE_FDW_FK_CHECK_COLS] = {0};
+		bool			nulls[SQLITE_FDW_FK_CHECK_COLS] = {0};
+		int				rc = sqlite3_step(pragma_stmt);
+		if (rc == SQLITE_DONE)
+			break;
+		else if (rc != SQLITE_ROW)
+		{
+			/* Not pass sql_stmt because it is finalized in PG_CATCH */
+			sqlitefdw_report_error(ERROR, NULL, db, sqlite3_sql(pragma_stmt), rc);
+		}
+		else
+		{
+			char		   *to = NULL;
+			char		   *from = NULL;
+			sqlite3_value  *val_table_to = sqlite3_column_value(pragma_stmt, 0);
+			sqlite3_value  *val_rowid = sqlite3_column_value(pragma_stmt, 1);
+			sqlite3_value  *val_table_from = sqlite3_column_value(pragma_stmt, 2);
+			sqlite3_value  *val_i = sqlite3_column_value(pragma_stmt, 3);
+
+			if (sqlite3_value_type(val_table_to) == SQLITE_NULL ||
+				sqlite3_value_type(val_table_from) == SQLITE_NULL ||
+				sqlite3_value_type(val_i) == SQLITE_NULL)
+			{
+				ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("\"%s\" returns NULL in a field, please check your SQLite configuration", stmt)));
+			}
+
+			/* The first column is the name of the table that contains the REFERENCES clause. */
+			to = sqlite_text_value_to_pg_db_encoding(val_table_to);
+			values[0] = CStringGetNameDatum(to);
+			/* The second column is the rowid of the row that contains the invalid REFERENCES clause, or NULL if the child table is a WITHOUT ROWID table. */
+			if (sqlite3_value_type(val_rowid) == SQLITE_NULL)
+				nulls[1] = true;
+			else
+				values[1] = Int64GetDatum(sqlite3_value_int64(val_rowid));
+			/* The third column is the name of the table that is referred to. */
+			from = sqlite_text_value_to_pg_db_encoding(val_table_from);
+			values[2] = CStringGetNameDatum(from);
+			/* The fourth column is the index of the specific foreign key constraint that failed. */
+			/* The fourth column in the output of the foreign_key_check pragma is the same integer as the first column in the output of the foreign_key_list pragma. */
+			values[3] = Int32GetDatum(sqlite3_value_int(val_i));
+#if PG_VERSION_NUM >= 150000
+			tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc, values, nulls);
+#else
+			tuplestore_putvalues(tupstore, tupdesc, values, nulls);
+#endif
+		}
+	}
+	sqlite3_finalize(pragma_stmt);
+	pragma_stmt = NULL;
+#if PG_VERSION_NUM < 150000
+	/* clean up and return the tuplestore */
+	tuplestore_donestoring(tupstore);
+#endif
+	PG_RETURN_VOID();
+}
+
+/*
+ * sqlite_fdw_db_fkeys_list:
+ *
+ * Returns description of foreign keys
+ *
+ */
+Datum
+sqlite_fdw_db_fkeys_list(PG_FUNCTION_ARGS)
+{
+#define SQLITE_FDW_FK_LIST_COLS	8
+	ReturnSetInfo  *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	sqlite3_stmt   *volatile pragma_stmt = NULL;
+	char		   *stmt = (char*)palloc0(NAMEDATALEN * 2 + 32);
+#if PG_VERSION_NUM < 150000
+	TupleDesc		tupdesc;
+	Tuplestorestate *tupstore;
+	MemoryContext	per_query_ctx;
+	MemoryContext	oldcontext;
+#endif
+	Name			srvname = PG_GETARG_NAME(0);
+	ForeignServer  *server = GetForeignServerByName(srvname->data, false);
+	sqlite3		   *db = sqlite_get_connection(server, false);
+	Name			table = PG_GETARG_NAME(1);
+	Name			schema = PG_GETARG_NAME(2);
+#if PG_VERSION_NUM >= 160000
+	InitMaterializedSRF(fcinfo, 0);
+#elif PG_VERSION_NUM >= 150000
+	SetSingleFuncCall(fcinfo, 0);
+#else
+	/* check to see if caller supports us returning a tuplestore */
+	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("set-valued function called in context that cannot accept a set")));
+	if (!(rsinfo->allowedModes & SFRM_Materialize))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("materialize mode required, but it is not allowed in this context")));
+
+	/* Build a tuple descriptor for our result type */
+	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+		elog(ERROR, "return type must be a row type");
+
+	/* Build tuplestore to hold the result rows */
+	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
+	oldcontext = MemoryContextSwitchTo(per_query_ctx);
+
+	tupstore = tuplestore_begin_heap(true, false, work_mem);
+	rsinfo->returnMode = SFRM_Materialize;
+	rsinfo->setResult = tupstore;
+	rsinfo->setDesc = tupdesc;
+
+	MemoryContextSwitchTo(oldcontext);
+#endif
+
+	sprintf(stmt, "PRAGMA \"%s\".foreign_key_list(\"%s\");", schema->data, table->data);
+	sqlite_prepare_wrapper(server, db, stmt, (sqlite3_stmt * *) & pragma_stmt, NULL, false);
+
+	for (;;)
+	{
+		Datum			values[SQLITE_FDW_FK_LIST_COLS] = {0};
+		bool			nulls[SQLITE_FDW_FK_LIST_COLS] = {0};
+		int				rc = sqlite3_step(pragma_stmt);
+		if (rc == SQLITE_DONE)
+			break;
+		else if (rc != SQLITE_ROW)
+		{
+			/* Not pass sql_stmt because it is finalized in PG_CATCH */
+			sqlitefdw_report_error(ERROR, NULL, db, sqlite3_sql(pragma_stmt), rc);
+		}
+		else
+		{
+			char		   *to = NULL;
+			char		   *col = NULL;
+			char		   *constrt = NULL;
+			char		   *onupd = NULL;
+			char		   *ondel = NULL;
+			char		   *f8 = NULL;
+			sqlite3_value  *val_i = sqlite3_column_value(pragma_stmt, 0);
+			sqlite3_value  *val_j = sqlite3_column_value(pragma_stmt, 1);
+			sqlite3_value  *val_to = sqlite3_column_value(pragma_stmt, 2);
+			sqlite3_value  *val_col = sqlite3_column_value(pragma_stmt, 3);
+			sqlite3_value  *val_constrt = sqlite3_column_value(pragma_stmt, 4);
+			sqlite3_value  *val_onupd = sqlite3_column_value(pragma_stmt, 5);
+			sqlite3_value  *val_ondel = sqlite3_column_value(pragma_stmt, 6);
+			sqlite3_value  *val_8 = sqlite3_column_value(pragma_stmt, 7);
+
+			if (sqlite3_value_type(val_i) == SQLITE_NULL ||
+				sqlite3_value_type(val_j) == SQLITE_NULL ||
+				sqlite3_value_type(val_to) == SQLITE_NULL ||
+				sqlite3_value_type(val_col) == SQLITE_NULL ||
+				sqlite3_value_type(val_constrt) == SQLITE_NULL ||
+				sqlite3_value_type(val_onupd) == SQLITE_NULL ||
+				sqlite3_value_type(val_ondel) == SQLITE_NULL ||
+				sqlite3_value_type(val_8) == SQLITE_NULL)
+			{
+				ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("\"%s\" returns NULL in a field, please check your SQLite configuration", stmt)));
+			}
+
+			values[0] = Int32GetDatum(sqlite3_value_int(val_i));
+			values[1] = Int32GetDatum(sqlite3_value_int(val_j));
+
+			to = sqlite_text_value_to_pg_db_encoding(val_to);
+			values[2] = CStringGetNameDatum(to);
+
+			col = sqlite_text_value_to_pg_db_encoding(val_col);
+			values[3] = CStringGetNameDatum(col);
+
+			constrt = sqlite_text_value_to_pg_db_encoding(val_constrt);
+			values[4] = CStringGetNameDatum(constrt);
+
+			onupd = sqlite_text_value_to_pg_db_encoding(val_onupd);
+			values[5] = CStringGetTextDatum(onupd);
+
+			ondel = sqlite_text_value_to_pg_db_encoding(val_ondel);
+			values[6] = CStringGetTextDatum(ondel);
+
+			f8 = sqlite_text_value_to_pg_db_encoding(val_8);
+			values[7] = CStringGetTextDatum(f8);
+#if PG_VERSION_NUM >= 150000
+			tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc, values, nulls);
+#else
+			tuplestore_putvalues(tupstore, tupdesc, values, nulls);
+#endif
+		}
+	}
+	sqlite3_finalize(pragma_stmt);
+	pragma_stmt = NULL;
+#if PG_VERSION_NUM < 150000
+	/* clean up and return the tuplestore */
+	tuplestore_donestoring(tupstore);
+#endif
+	PG_RETURN_VOID();
+}
+
+/* End of SQLite foreign keys group */
+
+/* SQLITE PAGE BLOCK */
+
+/*
+ * sqlite_fdw_db_page_size:
+ *
+ * Returns page size of the SQLite database in bytes.
+ *
+ */
+Datum
+sqlite_fdw_db_page_size(PG_FUNCTION_ARGS)
+{
+	Name			srvname = PG_GETARG_NAME(0);
+	Name			alias = PG_GETARG_NAME(1);
+	char*			schema = alias->data;
+	ForeignServer  *server = GetForeignServerByName(srvname->data, false);
+	sqlite3		   *db = sqlite_get_connection(server, false);
+	char		   *stmt = (char*)palloc0(NAMEDATALEN + 32);
+	int		  	 	res = -1;
+
+	sprintf(stmt, "PRAGMA \"%s\".page_size;", schema);
+	res = one_integer_value (db, stmt);
+	if ( res == -1 )
+		PG_RETURN_NULL();
+	else
+		PG_RETURN_INT32(res);
+}
+
+/*
+ * sqlite_fdw_db_cache_spill:
+ *
+ * Returns cache spill in pages.
+ *
+ */
+Datum
+sqlite_fdw_db_cache_spill(PG_FUNCTION_ARGS)
+{
+	Name			srvname = PG_GETARG_NAME(0);
+	Name			alias = PG_GETARG_NAME(1);
+	char*			schema = alias->data;
+	ForeignServer  *server = GetForeignServerByName(srvname->data, false);
+	sqlite3		   *db = sqlite_get_connection(server, false);
+	char		   *stmt = (char*)palloc0(NAMEDATALEN + 32);
+	int		  	 	res = -1;
+
+	sprintf(stmt, "PRAGMA \"%s\".cache_spill;", schema);
+	res = one_integer_value (db, stmt);
+	if ( res == -1 )
+		PG_RETURN_NULL();
+	else
+		PG_RETURN_INT32(res);
+}
+
+/*
+ * sqlite_fdw_db_max_page_count:
+ *
+ * Returns maximal page count in database in pages.
+ *
+ */
+Datum
+sqlite_fdw_db_max_page_count(PG_FUNCTION_ARGS)
+{
+	Name			srvname = PG_GETARG_NAME(0);
+	Name			alias = PG_GETARG_NAME(1);
+	char*			schema = alias->data;
+	ForeignServer  *server = GetForeignServerByName(srvname->data, false);
+	sqlite3		   *db = sqlite_get_connection(server, false);
+	char		   *stmt = (char*)palloc0(NAMEDATALEN + 32);
+	int		  	 	res = -1;
+
+	sprintf(stmt, "PRAGMA \"%s\".max_page_count;", schema);
+	res = one_integer_value (db, stmt);
+	if ( res == -1 )
+		PG_RETURN_NULL();
+	else
+		PG_RETURN_INT32(res);
+}
+
+/*
+ * sqlite_fdw_db_cache_size:
+ *
+ * Returns cache size in pages.
+ *
+ */
+Datum
+sqlite_fdw_db_cache_size(PG_FUNCTION_ARGS)
+{
+	Name			srvname = PG_GETARG_NAME(0);
+	Name			alias = PG_GETARG_NAME(1);
+	char*			schema = alias->data;
+	ForeignServer  *server = GetForeignServerByName(srvname->data, false);
+	sqlite3		   *db = sqlite_get_connection(server, false);
+	char		   *stmt = (char*)palloc0(NAMEDATALEN + 32);
+	int		  	 	res = -1;
+
+	sprintf(stmt, "PRAGMA \"%s\".cache_size;", schema);
+	res = one_integer_value (db, stmt);
+	if ( res == -1 )
+		PG_RETURN_NULL();
+	else
+		PG_RETURN_INT32(res);
+}
+
+/* End of SQLite page group */
+
+/* WAL AND TEMPORARY STORAGE GROUP */
+
+/*
+ * sqlite_fdw_db_temp_store:
+ *
+ * Returns temp storage mode of the SQLite database.
+ *
+ */
+Datum
+sqlite_fdw_db_temp_store(PG_FUNCTION_ARGS)
+{
+	Name			srvname = PG_GETARG_NAME(0);
+	Name			alias = PG_GETARG_NAME(1);
+	char*			schema = alias->data;
+	ForeignServer  *server = GetForeignServerByName(srvname->data, false);
+	sqlite3		   *db = sqlite_get_connection(server, false);
+	char		   *stmt = (char*)palloc0(NAMEDATALEN + 32);
+	int		  	 	res = -1;
+
+	sprintf(stmt, "PRAGMA \"%s\".temp_store;", schema);
+	res = one_integer_value (db, stmt);
+	if ( res == 0 )
+		PG_RETURN_TEXT_P(cstring_to_text("default"));
+	if ( res == 1 )
+		PG_RETURN_TEXT_P(cstring_to_text("memory"));
+	if ( res == 2 )
+		PG_RETURN_TEXT_P(cstring_to_text("file"));
+	PG_RETURN_NULL();
+}
+
+/*
+ * sqlite_fdw_db_tmp_directory:
+ *
+ * Returns temporary storage directory if not default.
+ *
+ */
+Datum
+sqlite_fdw_db_tmp_directory(PG_FUNCTION_ARGS)
+{
+	Name			srvname = PG_GETARG_NAME(0);
+	Name			alias = PG_GETARG_NAME(1);
+	char*			schema = alias->data;
+	ForeignServer  *server = GetForeignServerByName(srvname->data, false);
+	sqlite3		   *db = sqlite_get_connection(server, false);
+	char		   *stmt = (char*)palloc0(NAMEDATALEN + 32);
+	char		   *res = NULL;
+
+	sprintf(stmt, "PRAGMA \"%s\".temp_store_directory;", schema);
+	res = one_string_value (db, stmt);
+	if ( res == NULL )
+		PG_RETURN_NULL();
+	else
+	{
+		PG_RETURN_TEXT_P(res);
+	}
+}
+
+/*
+ * sqlite_fdw_db_wal_checkpoint:
+ *
+ * Returns WAL checkpoint mode
+ *
+ */
+Datum
+sqlite_fdw_db_wal_checkpoint(PG_FUNCTION_ARGS)
+{
+#define SQLITE_FDW_WALCP_COLS	3
+	ReturnSetInfo  *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	sqlite3_stmt   *volatile pragma_stmt = NULL;
+	char		   *stmt = (char*)palloc0(NAMEDATALEN + 32);
+#if PG_VERSION_NUM < 150000
+	TupleDesc		tupdesc;
+	Tuplestorestate *tupstore;
+	MemoryContext	per_query_ctx;
+	MemoryContext	oldcontext;
+#endif
+	Name			srvname = PG_GETARG_NAME(0);
+	ForeignServer  *server = GetForeignServerByName(srvname->data, false);
+	sqlite3		   *db = sqlite_get_connection(server, false);
+	Name			schema = PG_GETARG_NAME(1);
+#if PG_VERSION_NUM >= 160000
+	InitMaterializedSRF(fcinfo, 0);
+#elif PG_VERSION_NUM >= 150000
+	SetSingleFuncCall(fcinfo, 0);
+#else
+	/* check to see if caller supports us returning a tuplestore */
+	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("set-valued function called in context that cannot accept a set")));
+	if (!(rsinfo->allowedModes & SFRM_Materialize))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("materialize mode required, but it is not allowed in this context")));
+
+	/* Build a tuple descriptor for our result type */
+	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+		elog(ERROR, "return type must be a row type");
+
+	/* Build tuplestore to hold the result rows */
+	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
+	oldcontext = MemoryContextSwitchTo(per_query_ctx);
+
+	tupstore = tuplestore_begin_heap(true, false, work_mem);
+	rsinfo->returnMode = SFRM_Materialize;
+	rsinfo->setResult = tupstore;
+	rsinfo->setDesc = tupdesc;
+
+	MemoryContextSwitchTo(oldcontext);
+#endif
+
+	sprintf(stmt, "PRAGMA \"%s\".wal_checkpoint;", schema->data);
+	sqlite_prepare_wrapper(server, db, stmt, (sqlite3_stmt * *) & pragma_stmt, NULL, false);
+
+	for (;;)
+	{
+		Datum			values[SQLITE_FDW_WALCP_COLS] = {0};
+		bool			nulls[SQLITE_FDW_WALCP_COLS] = {0};
+		int				rc = sqlite3_step(pragma_stmt);
+		if (rc == SQLITE_DONE)
+			break;
+		else if (rc != SQLITE_ROW)
+		{
+			/* Not pass sql_stmt because it is finalized in PG_CATCH */
+			sqlitefdw_report_error(ERROR, NULL, db, sqlite3_sql(pragma_stmt), rc);
+		}
+		else
+		{
+			sqlite3_value  *val_blk_flg = sqlite3_column_value(pragma_stmt, 0);
+			sqlite3_value  *val_mpw = sqlite3_column_value(pragma_stmt, 1);
+			sqlite3_value  *val_npsmbdbf = sqlite3_column_value(pragma_stmt, 2);
+			int				blk_flg = -1;
+			int				mpw = -1;
+			int				npsmbdbf = -1;
+
+			if (sqlite3_value_type(val_blk_flg) != SQLITE_INTEGER ||
+				sqlite3_value_type(val_mpw) != SQLITE_INTEGER ||
+				sqlite3_value_type(val_npsmbdbf) != SQLITE_INTEGER)
+			{
+				ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("\"%s\" returns not integer field, please check your SQLite configuration", stmt)));
+			}
+
+			/* 0 but will be 1 if a RESTART or FULL or TRUNCATE checkpoint was blocked from completing, for example because another thread or process was actively using the database. In other words, the first column is 0 if the equivalent call to sqlite3_wal_checkpoint_v2() would have returned SQLITE_OK or 1 if the equivalent call would have returned SQLITE_BUSY. */
+			blk_flg = sqlite3_value_int(val_blk_flg);
+			values[0] = BoolGetDatum(blk_flg == 1);
+			/* The second column is the number of modified pages that have been written to the write-ahead log file. */
+			mpw = sqlite3_value_int(val_mpw);
+			if ( mpw == -1 )
+				nulls[1] = true;
+			else
+				values[1] = Int32GetDatum(mpw);
+			/* The third column is the number of pages in the write-ahead log file that have been successfully moved back into the database file at the conclusion of the checkpoint. */
+			npsmbdbf = sqlite3_value_int(val_npsmbdbf);
+			if ( npsmbdbf == -1 )
+				nulls[2] = true;
+			else
+				values[2] = Int32GetDatum(npsmbdbf);
+#if PG_VERSION_NUM >= 150000
+			tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc, values, nulls);
+#else
+			tuplestore_putvalues(tupstore, tupdesc, values, nulls);
+#endif
+		}
+	}
+	sqlite3_finalize(pragma_stmt);
+	pragma_stmt = NULL;
+#if PG_VERSION_NUM < 150000
+	/* clean up and return the tuplestore */
+	tuplestore_donestoring(tupstore);
+#endif
+	PG_RETURN_VOID();
+}
+
+/* End of WAL and temporary storage group */
+
+/*
+ * sqlite_fdw_db_secure_delete:
+ *
+ * Returns secure delete  mode of the SQLite database.
+ *
+ */
+Datum
+sqlite_fdw_db_secure_delete(PG_FUNCTION_ARGS)
+{
+	Name			srvname = PG_GETARG_NAME(0);
+	Name			alias = PG_GETARG_NAME(1);
+	char*			schema = alias->data;
+	ForeignServer  *server = GetForeignServerByName(srvname->data, false);
+	sqlite3		   *db = sqlite_get_connection(server, false);
+	char		   *stmt = (char*)palloc0(NAMEDATALEN + 32);
+	int		  	 	res = -1;
+
+	sprintf(stmt, "PRAGMA \"%s\".secure_delete;", schema);
+	res = one_integer_value (db, stmt);
+	if ( res == -1 )
+		PG_RETURN_NULL();
+	else
+		PG_RETURN_INT32(res);
+}
+
+/*
+ * sqlite_fdw_db_exclusive_locking_mode:
+ *
+ * Returns true is case of exclusive locking mode or false in case of normal.
+ *
+ */
+Datum
+sqlite_fdw_db_exclusive_locking_mode(PG_FUNCTION_ARGS)
+{
+	Name			srvname = PG_GETARG_NAME(0);
+	Name			alias = PG_GETARG_NAME(1);
+	char*			schema = alias->data;
+	ForeignServer  *server = GetForeignServerByName(srvname->data, false);
+	sqlite3		   *db = sqlite_get_connection(server, false);
+	char		   *stmt = (char*)palloc0(NAMEDATALEN + 32);
+	char		   *res = NULL;
+
+	sprintf(stmt, "PRAGMA \"%s\".locking_mode;", schema);
+	res = one_string_value (db, stmt);
+	if ( res == NULL )
+		PG_RETURN_NULL();
+	else
+	{
+		bool exc = strcmp(res, "exclusive") == 0;
+		pfree(res);
+		PG_RETURN_BOOL(exc);
+	}
+}
+
+/*
+ * sqlite_fdw_db_auto_vacuum:
+ *
+ * Returns auto vacuum mode of the SQLite database.
+ *
+ */
+Datum
+sqlite_fdw_db_auto_vacuum(PG_FUNCTION_ARGS)
+{
+	Name			srvname = PG_GETARG_NAME(0);
+	Name			alias = PG_GETARG_NAME(1);
+	char*			schema = alias->data;
+	ForeignServer  *server = GetForeignServerByName(srvname->data, false);
+	sqlite3		   *db = sqlite_get_connection(server, false);
+	char		   *stmt = (char*)palloc0(NAMEDATALEN + 32);
+	int		  	 	res = -1;
+
+	sprintf(stmt, "PRAGMA \"%s\".auto_vacuum;", schema);
+	res = one_integer_value (db, stmt);
+	if ( res == 0 )
+		PG_RETURN_TEXT_P(cstring_to_text("none"));
+	if ( res == 1 )
+		PG_RETURN_TEXT_P(cstring_to_text("full"));
+	if ( res == 2 )
+		PG_RETURN_TEXT_P(cstring_to_text("incremental"));
+	PG_RETURN_NULL();
+}
+

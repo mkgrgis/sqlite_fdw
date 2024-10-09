@@ -326,9 +326,16 @@ extern EquivalenceMember *sqlite_find_em_for_rel_target(PlannerInfo *root,
 extern int	sqlite_set_transmission_modes(void);
 extern void sqlite_reset_transmission_modes(int nestlevel);
 extern const int sqlite_affinity_code(char* t);
+void sqlite_prepare_wrapper(ForeignServer *server,
+							sqlite3 * db, char *query,
+						    sqlite3_stmt * *result,
+						    const char **pzTail,
+						    bool is_cache);
+const char* sqlite_datatype(int t);
 
 /* option.c headers */
 extern sqlite_opt * sqlite_get_options(Oid foreigntableid);
+void validate_integrity_check_mode (const char *integrity_check_mode);
 
 /* depare.c headers */
 extern void sqlite_deparse_select_stmt_for_rel(StringInfo buf, PlannerInfo *root, RelOptInfo *rel,
@@ -369,6 +376,10 @@ extern void sqlite_classify_conditions(PlannerInfo *root,
 									   List *input_conds,
 									   List **remote_conds,
 									   List **local_conds);
+/* IEEE 754-2008 : ∞ and NaN */
+extern const char* CHAR_INF_SHORT;
+extern const char* CHAR_INF_LONG;
+extern const char* CHAR_NAN;
 
 /* connection.c headers */
 sqlite3    *sqlite_get_connection(ForeignServer *server, bool truncatable);
@@ -391,5 +402,7 @@ void sqlite_fdw_data_norm_functs_init(sqlite3* db);
 /* sqlite_query.c headers */
 sqlite3_int64
 			binstr2int64(const char *s);
+char *
+			sqlite_text_value_to_pg_db_encoding(sqlite3_value *val);
 
 #endif							/* SQLITE_FDW_H */
