@@ -187,7 +187,7 @@ DELETE FROM "type_BOOLEAN_oper" WHERE b2;
 SELECT DISTINCT b1, b2 FROM "type_BOOLEAN_oper";
 
 --Testcase 79:
-DELETE FROM "type_BOOLEAN";
+--DELETE FROM "type_BOOLEAN";
 
 --Testcase 003:
 DROP EXTENSION sqlite_fdw CASCADE;

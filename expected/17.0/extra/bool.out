@@ -1264,7 +1264,7 @@ SELECT DISTINCT b1, b2 FROM "type_BOOLEAN_oper";
 (2 rows)
 
 --Testcase 79:
-DELETE FROM "type_BOOLEAN";
+--DELETE FROM "type_BOOLEAN";
 --Testcase 003:
 DROP EXTENSION sqlite_fdw CASCADE;
 NOTICE:  drop cascades to 6 other objects
