@@ -157,7 +157,7 @@ CREATE TABLE road (
 	thepath 	path
 );
 
-create table road_tmp (a int, b int, id integer primary key autoincrement);
+CREATE TABLE road_tmp (a int, b int, id integer primary key autoincrement);
 
 CREATE TABLE dates (
 	name			TEXT,
@@ -202,17 +202,17 @@ CREATE TABLE bool_test_tmp(
 
 -- FOR AGGREGATEQ.SQL
 
-create table minmaxtest(f1 int);
-create table agg_tb(v int, id integer primary key autoincrement);
-create table agg_tb2(v text);
-create table agg_t1 (a int, b int, c int, d int, primary key (a, b));
-create table agg_t2 (x int, y int, z int, primary key (x, y));
-create table agg_t3 (a float8, b float8, id integer primary key autoincrement);
-create table agg_t4 (a float4, b float4, id integer primary key autoincrement);
-create table agg_t5 (a numeric, b numeric, id integer primary key autoincrement);
-create table agg_t6 (a float8, id integer primary key autoincrement);
-create table agg_t7 (a float8, b float8, c float8, d float8, id integer primary key autoincrement);
-create table agg_t8 (a text, b text, primary key (a));
+CREATE TABLE minmaxtest(f1 int);
+CREATE TABLE agg_tb(v int, id integer primary key autoincrement);
+CREATE TABLE agg_tb2(v text);
+CREATE TABLE agg_t1 (a int, b int, c int, d int, primary key (a, b));
+CREATE TABLE agg_t2 (x int, y int, z int, primary key (x, y));
+CREATE TABLE agg_t3 (a float8, b float8, id integer primary key autoincrement);
+CREATE TABLE agg_t4 (a float4, b float4, id integer primary key autoincrement);
+CREATE TABLE agg_t5 (a numeric, b numeric, id integer primary key autoincrement);
+CREATE TABLE agg_t6 (a float8, id integer primary key autoincrement);
+CREATE TABLE agg_t7 (a float8, b float8, c float8, d float8, id integer primary key autoincrement);
+CREATE TABLE agg_t8 (a text, b text, primary key (a));
 CREATE TABLE regr_test (x float8, y float8, id integer primary key autoincrement);
 create table agg_t9 (a int, b int, c int, primary key (a, b));
 create table agg_t10(one int, id integer primary key autoincrement);
@@ -237,27 +237,27 @@ create table agg_t23 (id int);
 CREATE TABLE float_tb(f real);
 
 -- multi-arg aggs
-create table multi_arg_agg (a int, b int, c text);
+CREATE TABLE multi_arg_agg (a int, b int, c text);
 
-create table agg_group_1 (c1 int, c2 numeric, c3 int);
-create table agg_group_2 (a int , c1 numeric, c2 text, c3 int);
-create table agg_group_3 (c1 numeric, c2 int, c3 int);
-create table agg_group_4 (c1 numeric, c2 text, c3 int);
+CREATE TABLE agg_group_1 (c1 int, c2 numeric, c3 int);
+CREATE TABLE agg_group_2 (a int , c1 numeric, c2 text, c3 int);
+CREATE TABLE agg_group_3 (c1 numeric, c2 int, c3 int);
+CREATE TABLE agg_group_4 (c1 numeric, c2 text, c3 int);
 
-create table agg_hash_1 (c1 int, c2 numeric, c3 int);
-create table agg_hash_2 (a int , c1 numeric, c2 text, c3 int);
-create table agg_hash_3 (c1 numeric, c2 int, c3 int);
-create table agg_hash_4 (c1 numeric, c2 text, c3 int);
+CREATE TABLE agg_hash_1 (c1 int, c2 numeric, c3 int);
+CREATE TABLE agg_hash_2 (a int , c1 numeric, c2 text, c3 int);
+CREATE TABLE agg_hash_3 (c1 numeric, c2 int, c3 int);
+CREATE TABLE agg_hash_4 (c1 numeric, c2 text, c3 int);
 
 -- FOR float4.sql
-create table testdata(bits text, id integer primary key autoincrement);
+CREATE TABLE testdata(bits text, id integer primary key autoincrement);
 CREATE TABLE NON_ERROR_THROWING_API_FLOAT4(f1 text, id serial);
 
 -- FOR float8.sql
 CREATE TABLE NON_ERROR_THROWING_API_FLOAT8(f1 text, id serial);
 
 -- FOR int4.sql
-create table numeric_tmp(f1 numeric, f2 numeric , id integer primary key autoincrement);
+CREATE TABLE numeric_tmp(f1 numeric, f2 numeric , id integer primary key autoincrement);
 CREATE TABLE NON_ERROR_THROWING_API_INT4(f1 text, id serial);
 CREATE TABLE special_case_int4 (f1 text, id integer primary key autoincrement);
 
@@ -274,8 +274,8 @@ INSERT INTO VARCHAR_TBL (f1) VALUES ('ab');
 --Testcase 10:
 INSERT INTO VARCHAR_TBL (f1) VALUES ('abcd');
 
-create table bytea_test_table(v bytea);
-create table pagg_test (x int, y int);
+CREATE TABLE bytea_test_table(v bytea);
+CREATE TABLE pagg_test (x int, y int);
 
 -- FOR numeric.sql
 
@@ -316,8 +316,8 @@ CREATE TABLE NON_ERROR_THROWING_API_INT4_NUMERIC(f1 text, id serial);
 
 -- FOR join.sql
 
-create table q1 (i int);
-create table q2 (i int);
+CREATE TABLE q1 (i int);
+CREATE TABLE q2 (i int);
 CREATE TABLE foo (f1 int);
 
 CREATE TABLE J1_TBL (
@@ -331,13 +331,13 @@ CREATE TABLE J2_TBL (
   k integer
 );
 
-create table sub_tbl (key1 int, key3 int, key5 int, key6 int, value1 int, id integer primary key autoincrement);
+CREATE TABLE sub_tbl (key1 int, key3 int, key5 int, key6 int, value1 int, id integer primary key autoincrement);
 
 CREATE TABLE t11 (name TEXT, n INTEGER);
 CREATE TABLE t21 (name TEXT, n INTEGER);
 CREATE TABLE t31 (name TEXT, n INTEGER);
-create table x (x1 int, x2 int);
-create table y (y1 int, y2 int);
+CREATE TABLE x (x1 int, x2 int);
+CREATE TABLE y (y1 int, y2 int);
 
 CREATE TABLE t12 (a int, b int);
 CREATE TABLE t22 (a int, b int);
@@ -345,48 +345,48 @@ CREATE TABLE t32 (x int, y int);
 
 CREATE TABLE tt1 ( tt1_id int4, joincol int4 );
 CREATE TABLE tt2 ( tt2_id int4, joincol int4 );
-create table tt3(f1 int, f2 text);
-create table tt4(f1 int);
-create table tt4x(c1 int, c2 int, c3 int);
-create table tt5(f1 int, f2 int);
-create table tt6(f1 int, f2 int);
-create table xx (pkxx int);
-create table yy (pkyy int, pkxx int);
-create table zt1 (f1 int primary key);
-create table zt2 (f2 int primary key);
-create table zt3 (f3 int primary key);
+CREATE TABLE tt3(f1 int, f2 text);
+CREATE TABLE tt4(f1 int);
+CREATE TABLE tt4x(c1 int, c2 int, c3 int);
+CREATE TABLE tt5(f1 int, f2 int);
+CREATE TABLE tt6(f1 int, f2 int);
+CREATE TABLE xx (pkxx int);
+CREATE TABLE yy (pkyy int, pkxx int);
+CREATE TABLE zt1 (f1 int primary key);
+CREATE TABLE zt2 (f2 int primary key);
+CREATE TABLE zt3 (f3 int primary key);
 
-create table a1 (i integer);
-create table b1 (x integer, y integer);
+CREATE TABLE a1 (i integer);
+CREATE TABLE b1 (x integer, y integer);
 
-create table a2 (
+CREATE TABLE a2 (
      code char not null,
      primary key (code)
 );
-create table b2 (
+CREATE TABLE b2 (
      a char not null,
      num integer not null,
      primary key (a, num)
 );
-create table c2 (
+CREATE TABLE c2 (
      name char not null,
      a char,
      primary key (name)
 );
 
-create table nt1 (
+CREATE TABLE nt1 (
   id int primary key,
   a1 boolean,
   a2 boolean
 );
-create table nt2 (
+CREATE TABLE nt2 (
   id int primary key,
   nt1_id int,
   b1 boolean,
   b2 boolean,
   foreign key (nt1_id) references nt1(id)
 );
-create table nt3 (
+CREATE TABLE nt3 (
   id int primary key,
   nt2_id int,
   c1 boolean,
@@ -405,29 +405,29 @@ CREATE TABLE b3 (id int PRIMARY KEY, c_id int);
 CREATE TABLE c3 (id int PRIMARY KEY);
 CREATE TABLE d3 (a int, b int);
 
-create table parent (k int primary key, pd int);
-create table child (k int unique, cd int);
+CREATE TABLE parent (k int primary key, pd int);
+CREATE TABLE child (k int unique, cd int);
 
 CREATE TABLE a4 (id int PRIMARY KEY);
 CREATE TABLE b4 (id int PRIMARY KEY, a_id int);
 
-create table innertab (id int8 primary key, dat1 int8);
-create table uniquetbl (f1 text unique);
+CREATE TABLE innertab (id int8 primary key, dat1 int8);
+CREATE TABLE uniquetbl (f1 text unique);
 
-create table join_pt1 (a int, b int, c varchar);
+CREATE TABLE join_pt1 (a int, b int, c varchar);
 
-create table fkest (a int, b int, c int unique, primary key(a,b));
-create table fkest1 (a int, b int, primary key(a,b) foreign key (a,b) references fkest);
+CREATE TABLE fkest (a int, b int, c int unique, primary key(a,b));
+CREATE TABLE fkest1 (a int, b int, primary key(a,b) foreign key (a,b) references fkest);
 
-create table j11 (id int primary key);
-create table j21 (id int primary key);
-create table j31 (id int);
+CREATE TABLE j11 (id int primary key);
+CREATE TABLE j21 (id int primary key);
+CREATE TABLE j31 (id int);
 
-create table j12 (id1 int, id2 int, primary key(id1,id2));
-create table j22 (id1 int, id2 int, primary key(id1,id2));
-create table j32 (id1 int, id2 int, primary key(id1,id2));
+CREATE TABLE j12 (id1 int, id2 int, primary key(id1,id2));
+CREATE TABLE j22 (id1 int, id2 int, primary key(id1,id2));
+CREATE TABLE j32 (id1 int, id2 int, primary key(id1,id2));
 
-create table inserttest01 (col1 int4, col2 int4 NOT NULL, col3 text default 'testing');
+CREATE TABLE inserttest01 (col1 int4, col2 int4 NOT NULL, col3 text default 'testing');
 
 CREATE TABLE update_test (
     i   INT PRIMARY KEY,
@@ -443,7 +443,7 @@ create table tbl_ra(a int unique, b int);
 
 CREATE TABLE "type_FLOAT_INF" (i int primary key, f float);
 CREATE VIEW  "type_FLOAT_INF+" AS SELECT *, typeof("f") t, length("f") l FROM "type_FLOAT_INF";
--- In PostgreSQL some of this valus causes error but is infinity representation in SQLite
+-- In PostgreSQL some of this valus causes error but here tests infinity representation in SQLite
 INSERT INTO  "type_FLOAT_INF" VALUES (1, -1e999),(2, 1e999),(3, -9e999),(4, 9e999),(5,-1e308),(6, 0),(7, 1e308);
 
 -- FOR timestamp.sql
@@ -452,3 +452,10 @@ CREATE TABLE infinite_timestamp (
 	t2	TIMESTAMP,
 	id integer primary key autoincrement
 );
+
+CREATE TABLE test_pragma_jms
+(
+    attr int
+);
+insert into test_pragma_jms values (0);
+

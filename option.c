@@ -43,6 +43,8 @@ static struct SqliteFdwOption valid_options[] =
 {
 	{"database", ForeignServerRelationId},
 	{"keep_connections", ForeignServerRelationId},
+	{"journal_mode", ForeignServerRelationId},
+	{"synchronous", ForeignServerRelationId},
 	{"force_readonly", ForeignServerRelationId},
 	{"table", ForeignTableRelationId},
 	{"key", AttributeRelationId},
@@ -172,6 +174,38 @@ sqlite_fdw_validator(PG_FUNCTION_ARGS)
 						 errmsg("\"%s\" must be an integer value greater than zero",
 								def->defname)));
 		}
+		else if (strcmp(def->defname, "journal_mode") == 0)
+        {
+            char	   *value;
+            value = defGetString(def);
+            if (!( strcmp(value, "delete") == 0
+                || strcmp(value, "truncate") == 0
+                || strcmp(value, "persist") == 0
+                || strcmp(value, "memory") == 0
+                || strcmp(value, "wal") == 0
+                || strcmp(value, "off") == 0)
+            )
+            ereport(ERROR,
+                    (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                     errmsg("\"%s\" parameter is not valid; accepted values: 'delete', 'truncate', 'persist', "
+                     "'memory', 'wal', 'off'.",
+                            def->defname)));
+        }
+        else if (strcmp(def->defname, "synchronous") == 0)
+        {
+            char	   *value;
+            value = defGetString(def);
+            if (!( strcmp(value, "off") == 0
+                || strcmp(value, "normal") == 0
+                || strcmp(value, "full") == 0
+                || strcmp(value, "extra") == 0)
+            )
+            ereport(ERROR,
+                    (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                     errmsg("\"%s\" parameter is not valid; accepted values: 'off', 'normal', 'full', "
+                     "'extra'.",
+                            def->defname)));
+        }
 	}
 	PG_RETURN_VOID();
 }
