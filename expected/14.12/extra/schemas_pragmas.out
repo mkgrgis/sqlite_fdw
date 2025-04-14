@@ -382,6 +382,8 @@ SELECT * FROM sqlite_fdw_db_list('sqlite_svr');
  import2 | type_DATE         | sqlite_svr | ("table" 'type_DATE', schema_name 'cm')         | 
  import2 | type_DOUBLE       | sqlite_svr | ("table" 'type_DOUBLE', schema_name 'cm')       | 
  import2 | type_FLOAT        | sqlite_svr | ("table" 'type_FLOAT', schema_name 'cm')        | 
+ import2 | type_INET         | sqlite_svr | ("table" 'type_INET', schema_name 'cm')         | 
+ import2 | type_INETpk       | sqlite_svr | ("table" 'type_INETpk', schema_name 'cm')       | 
  import2 | type_INTEGER      | sqlite_svr | ("table" 'type_INTEGER', schema_name 'cm')      | 
  import2 | type_JSON         | sqlite_svr | ("table" 'type_JSON', schema_name 'cm')         | 
  import2 | type_JSONB        | sqlite_svr | ("table" 'type_JSONB', schema_name 'cm')        | 
@@ -401,7 +403,7 @@ SELECT * FROM sqlite_fdw_db_list('sqlite_svr');
  import2 | typetest          | sqlite_svr | ("table" 'typetest', schema_name 'cm')          | 
  import2 | ♁                 | sqlite_svr | ("table" '♁', schema_name 'cm')                 | 
  import2 | ♂                 | sqlite_svr | ("table" '♂', schema_name 'cm')                 | 
-(59 rows)
+(61 rows)
 
 --Testcase 32:
 SELECT sqlite_fdw_db_attach('sqlite_svr', '/tmp/sqlite_fdw_test/common.db', '試験 ');
@@ -498,13 +500,14 @@ SELECT * FROM sqlite_fdw_table_info('sqlite_svr', 'RO_RW_test', '試験 ');
 
 --Testcase 45:
 SELECT * FROM sqlite_fdw_table_info('sqlite_svr', 'type_UUID+', '試験 ');
- sqlite_id | column | type | notnull | default_value | pk | column_mode 
------------+--------+------+---------+---------------+----+-------------
-         0 | i      | INT  | f       |               | f  | normal
-         1 | u      | uuid | f       |               | f  | normal
-         2 | t      |      | f       |               | f  | normal
-         3 | l      |      | f       |               | f  | normal
-(4 rows)
+ sqlite_id |     column      | type | notnull | default_value | pk | column_mode 
+-----------+-----------------+------+---------+---------------+----+-------------
+         0 | i               | INT  | f       |               | f  | normal
+         1 | u               | uuid | f       |               | f  | normal
+         2 | t               |      | f       |               | f  | normal
+         3 | l               |      | f       |               | f  | normal
+         4 | uuid_blob_canon |      | f       |               | f  | normal
+(5 rows)
 
 --Testcase 46:
 SELECT * FROM sqlite_fdw_table_info('sqlite_svr', 'type_UUID', '試験 ');
@@ -564,6 +567,7 @@ SELECT * FROM sqlite_fdw_rel_list('sqlite_svr', '試験 ');
  試験   | BitT              | table   |    3 | f        | f
  試験   | alltypetest       | table   |   24 | f        | f
  試験   | type_JSON         | table   |    8 | f        | f
+ 試験   | type_INET         | table   |    2 | f        | f
  試験   | noprimary         | table   |    2 | f        | f
  試験   | type_JSONB        | table   |    8 | f        | f
  試験   | type_MACADDR      | table   |    2 | f        | f
@@ -574,6 +578,7 @@ SELECT * FROM sqlite_fdw_rel_list('sqlite_svr', '試験 ');
  試験   | department        | table   |    2 | f        | f
  試験   | employee          | table   |    3 | f        | f
  試験   | ♁                 | table   |    6 | f        | f
+ 試験   | type_INET+        | view    |    0 | f        | f
  試験   | type_BOOLEANpk    | table   |    1 | f        | f
  試験   | grem1_1           | table   |    2 | f        | f
  試験   | type_BLOB         | table   |    1 | f        | f
@@ -600,6 +605,7 @@ SELECT * FROM sqlite_fdw_rel_list('sqlite_svr', '試験 ');
  試験   | type_MACADDR+     | view    |    0 | f        | f
  試験   | type_MACADDR8pk   | table   |    1 | f        | f
  試験   | type_BOOLEAN      | table   |    2 | f        | f
+ 試験   | type_INETpk       | table   |    1 | f        | f
  試験   | empdata           | table   |    2 | f        | f
  試験   | type_DOUBLE       | table   |    1 | f        | f
  試験   | numbers           | table   |    2 | f        | f
@@ -615,8 +621,8 @@ SELECT * FROM sqlite_fdw_rel_list('sqlite_svr', '試験 ');
  試験   | type_BYTE         | table   |    1 | f        | f
  試験   | type_TIMESTAMP    | table   |    2 | f        | f
  試験   | type_BIT+         | view    |    0 | f        | f
- 試験   | type_UUID+        | view    |    4 | f        | f
-(68 rows)
+ 試験   | type_UUID+        | view    |    5 | f        | f
+(71 rows)
 
 --Testcase 51:
 SELECT * FROM sqlite_fdw_index_list('sqlite_svr', 'Unicode data', '試験 ');
@@ -712,7 +718,7 @@ SELECT sqlite_fdw_db_user_version('sqlite_svr', '試験 ') uv;
 SELECT sqlite_fdw_db_schema_version('sqlite_svr', '試験 ') sv;
  sv 
 ----
- 67
+ 70
 (1 row)
 
 --Testcase 64:
@@ -1073,7 +1079,7 @@ SELECT sqlite_fdw_db_detach('sqlite_svr', '試験 +');
 DROP USER sqlite_svr_owner_role;
 --Testcase 100:
 DROP SERVER sqlite_svr CASCADE;
-NOTICE:  drop cascades to 226 other objects
+NOTICE:  drop cascades to 228 other objects
 DETAIL:  drop cascades to foreign table aggtest
 drop cascades to foreign table student
 drop cascades to foreign table "Unicode data"
@@ -1174,7 +1180,7 @@ drop cascades to foreign table import1.ceil_floor_round
 drop cascades to foreign table import1.ceil_round_float8
 drop cascades to foreign table import1.width_bucket_tbl
 drop cascades to foreign table import1.width_bucket_test
-and 126 other objects (see server log for list)
+and 128 other objects (see server log for list)
 --Testcase 101:
 DROP EXTENSION sqlite_fdw CASCADE;
 --Testcase 266:
