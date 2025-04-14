@@ -18,22 +18,22 @@ AND foreign_table_schema = 'public'
 SELECT * FROM ft;
  foreign_table_catalog | foreign_table_schema | foreign_table_name | foreign_server_catalog | foreign_server_name | n  
 -----------------------+----------------------+--------------------+------------------------+---------------------+----
- contrib_regression    | public               | department         | contrib_regression     | sqlite_svr          |  1
- contrib_regression    | public               | employee           | contrib_regression     | sqlite_svr          |  2
- contrib_regression    | public               | empdata            | contrib_regression     | sqlite_svr          |  3
- contrib_regression    | public               | numbers            | contrib_regression     | sqlite_svr          |  4
- contrib_regression    | public               | t                  | contrib_regression     | sqlite_svr          |  5
- contrib_regression    | public               | multiprimary       | contrib_regression     | sqlite_svr          |  6
- contrib_regression    | public               | columntest         | contrib_regression     | sqlite_svr          |  7
- contrib_regression    | public               | noprimary          | contrib_regression     | sqlite_svr          |  8
- contrib_regression    | public               | limittest          | contrib_regression     | sqlite_svr          |  9
- contrib_regression    | public               | grem1_1            | contrib_regression     | sqlite_svr          | 10
- contrib_regression    | public               | grem1_2            | contrib_regression     | sqlite_svr          | 11
- contrib_regression    | public               | case_exp           | contrib_regression     | sqlite_svr          | 12
- contrib_regression    | public               | type_STRING        | contrib_regression     | sqlite_svr          | 13
- contrib_regression    | public               | type_BOOLEANpk     | contrib_regression     | sqlite_svr          | 14
- contrib_regression    | public               | type_BOOLEAN       | contrib_regression     | sqlite_svr          | 15
- contrib_regression    | public               | type_BYTE          | contrib_regression     | sqlite_svr          | 16
+ contrib_regression    | public               | employee           | contrib_regression     | sqlite_svr          |  1
+ contrib_regression    | public               | empdata            | contrib_regression     | sqlite_svr          |  2
+ contrib_regression    | public               | numbers            | contrib_regression     | sqlite_svr          |  3
+ contrib_regression    | public               | t                  | contrib_regression     | sqlite_svr          |  4
+ contrib_regression    | public               | multiprimary       | contrib_regression     | sqlite_svr          |  5
+ contrib_regression    | public               | columntest         | contrib_regression     | sqlite_svr          |  6
+ contrib_regression    | public               | noprimary          | contrib_regression     | sqlite_svr          |  7
+ contrib_regression    | public               | limittest          | contrib_regression     | sqlite_svr          |  8
+ contrib_regression    | public               | grem1_1            | contrib_regression     | sqlite_svr          |  9
+ contrib_regression    | public               | grem1_2            | contrib_regression     | sqlite_svr          | 10
+ contrib_regression    | public               | case_exp           | contrib_regression     | sqlite_svr          | 11
+ contrib_regression    | public               | type_STRING        | contrib_regression     | sqlite_svr          | 12
+ contrib_regression    | public               | type_BOOLEANpk     | contrib_regression     | sqlite_svr          | 13
+ contrib_regression    | public               | type_BOOLEAN       | contrib_regression     | sqlite_svr          | 14
+ contrib_regression    | public               | type_BYTE          | contrib_regression     | sqlite_svr          | 15
+ contrib_regression    | public               | department         | contrib_regression     | sqlite_svr          | 16
  contrib_regression    | public               | type_SINT          | contrib_regression     | sqlite_svr          | 17
  contrib_regression    | public               | type_BINT          | contrib_regression     | sqlite_svr          | 18
  contrib_regression    | public               | type_INTEGER       | contrib_regression     | sqlite_svr          | 19
@@ -73,7 +73,11 @@ SELECT * FROM ft;
  contrib_regression    | public               | type_BOOLEAN_oper  | contrib_regression     | sqlite_svr          | 53
  contrib_regression    | public               | ♁                  | contrib_regression     | sqlite_svr          | 54
  contrib_regression    | public               | ♂                  | contrib_regression     | sqlite_svr          | 55
-(55 rows)
+ contrib_regression    | public               | norowid            | contrib_regression     | sqlite_svr          | 56
+ contrib_regression    | public               | strict             | contrib_regression     | sqlite_svr          | 57
+ contrib_regression    | public               | fk_s_artist        | contrib_regression     | sqlite_svr          | 58
+ contrib_regression    | public               | fk_d_track         | contrib_regression     | sqlite_svr          | 59
+(59 rows)
 
 --Testcase 07:
 CREATE VIEW fc AS (
@@ -86,38 +90,38 @@ ON (c.table_catalog, c.table_schema, c.table_name) = (ft.foreign_table_catalog, 
 SELECT n, table_name, column_name, tab_no, def, "null", data_type, udt_schema, udt_name FROM fc;
  n  |    table_name     |   column_name   | tab_no | def | null |          data_type          | udt_schema | udt_name  
 ----+-------------------+-----------------+--------+-----+------+-----------------------------+------------+-----------
-  1 | department        | department_id   |      1 |     | YES  | bigint                      | pg_catalog | int8
-  1 | department        | department_name |      2 |     | YES  | text                        | pg_catalog | text
-  2 | employee          | emp_id          |      1 |     | YES  | bigint                      | pg_catalog | int8
-  2 | employee          | emp_name        |      2 |     | YES  | text                        | pg_catalog | text
-  2 | employee          | emp_dept_id     |      3 |     | YES  | bigint                      | pg_catalog | int8
-  3 | empdata           | emp_id          |      1 |     | YES  | bigint                      | pg_catalog | int8
-  3 | empdata           | emp_dat         |      2 |     | YES  | numeric                     | pg_catalog | numeric
-  4 | numbers           | a               |      1 |     | YES  | bigint                      | pg_catalog | int8
-  4 | numbers           | b               |      2 |     | YES  | character varying           | pg_catalog | varchar
-  5 | t                 | a               |      1 |     | YES  | bigint                      | pg_catalog | int8
-  5 | t                 | b               |      2 |     | YES  | bigint                      | pg_catalog | int8
-  6 | multiprimary      | a               |      1 |     | YES  | bigint                      | pg_catalog | int8
-  6 | multiprimary      | b               |      2 |     | YES  | bigint                      | pg_catalog | int8
-  6 | multiprimary      | c               |      3 |     | YES  | bigint                      | pg_catalog | int8
-  7 | columntest        | a a             |      1 |     | YES  | bigint                      | pg_catalog | int8
-  7 | columntest        | b b             |      2 |     | YES  | bigint                      | pg_catalog | int8
-  7 | columntest        | c c             |      3 |     | YES  | bigint                      | pg_catalog | int8
-  8 | noprimary         | a               |      1 |     | YES  | bigint                      | pg_catalog | int8
-  8 | noprimary         | b               |      2 |     | YES  | text                        | pg_catalog | text
-  9 | limittest         | id              |      1 |     | YES  | bigint                      | pg_catalog | int8
-  9 | limittest         | x               |      2 |     | YES  | bigint                      | pg_catalog | int8
-  9 | limittest         | y               |      3 |     | YES  | text                        | pg_catalog | text
- 10 | grem1_1           | a               |      1 |     | YES  | bigint                      | pg_catalog | int8
- 11 | grem1_2           | a               |      1 |     | YES  | bigint                      | pg_catalog | int8
- 12 | case_exp          | c1              |      1 |     | YES  | bigint                      | pg_catalog | int8
- 12 | case_exp          | c3              |      2 |     | YES  | text                        | pg_catalog | text
- 12 | case_exp          | c6              |      3 |     | YES  | character varying           | pg_catalog | varchar
- 13 | type_STRING       | col             |      1 |     | YES  | text                        | pg_catalog | text
- 14 | type_BOOLEANpk    | col             |      1 |     | YES  | boolean                     | pg_catalog | bool
- 15 | type_BOOLEAN      | i               |      1 |     | YES  | bigint                      | pg_catalog | int8
- 15 | type_BOOLEAN      | b               |      2 |     | YES  | boolean                     | pg_catalog | bool
- 16 | type_BYTE         | col             |      1 |     | YES  | character                   | pg_catalog | bpchar
+  1 | employee          | emp_id          |      1 |     | YES  | bigint                      | pg_catalog | int8
+  1 | employee          | emp_name        |      2 |     | YES  | text                        | pg_catalog | text
+  1 | employee          | emp_dept_id     |      3 |     | YES  | bigint                      | pg_catalog | int8
+  2 | empdata           | emp_id          |      1 |     | YES  | bigint                      | pg_catalog | int8
+  2 | empdata           | emp_dat         |      2 |     | YES  | numeric                     | pg_catalog | numeric
+  3 | numbers           | a               |      1 |     | YES  | bigint                      | pg_catalog | int8
+  3 | numbers           | b               |      2 |     | YES  | character varying           | pg_catalog | varchar
+  4 | t                 | a               |      1 |     | YES  | bigint                      | pg_catalog | int8
+  4 | t                 | b               |      2 |     | YES  | bigint                      | pg_catalog | int8
+  5 | multiprimary      | a               |      1 |     | YES  | bigint                      | pg_catalog | int8
+  5 | multiprimary      | b               |      2 |     | YES  | bigint                      | pg_catalog | int8
+  5 | multiprimary      | c               |      3 |     | YES  | bigint                      | pg_catalog | int8
+  6 | columntest        | a a             |      1 |     | YES  | bigint                      | pg_catalog | int8
+  6 | columntest        | b b             |      2 |     | YES  | bigint                      | pg_catalog | int8
+  6 | columntest        | c c             |      3 |     | YES  | bigint                      | pg_catalog | int8
+  7 | noprimary         | a               |      1 |     | YES  | bigint                      | pg_catalog | int8
+  7 | noprimary         | b               |      2 |     | YES  | text                        | pg_catalog | text
+  8 | limittest         | id              |      1 |     | YES  | bigint                      | pg_catalog | int8
+  8 | limittest         | x               |      2 |     | YES  | bigint                      | pg_catalog | int8
+  8 | limittest         | y               |      3 |     | YES  | text                        | pg_catalog | text
+  9 | grem1_1           | a               |      1 |     | YES  | bigint                      | pg_catalog | int8
+ 10 | grem1_2           | a               |      1 |     | YES  | bigint                      | pg_catalog | int8
+ 11 | case_exp          | c1              |      1 |     | YES  | bigint                      | pg_catalog | int8
+ 11 | case_exp          | c3              |      2 |     | YES  | text                        | pg_catalog | text
+ 11 | case_exp          | c6              |      3 |     | YES  | character varying           | pg_catalog | varchar
+ 12 | type_STRING       | col             |      1 |     | YES  | text                        | pg_catalog | text
+ 13 | type_BOOLEANpk    | col             |      1 |     | YES  | boolean                     | pg_catalog | bool
+ 14 | type_BOOLEAN      | i               |      1 |     | YES  | bigint                      | pg_catalog | int8
+ 14 | type_BOOLEAN      | b               |      2 |     | YES  | boolean                     | pg_catalog | bool
+ 15 | type_BYTE         | col             |      1 |     | YES  | character                   | pg_catalog | bpchar
+ 16 | department        | department_id   |      1 |     | YES  | bigint                      | pg_catalog | int8
+ 16 | department        | department_name |      2 |     | YES  | text                        | pg_catalog | text
  17 | type_SINT         | col             |      1 |     | YES  | bigint                      | pg_catalog | int8
  18 | type_BINT         | col             |      1 |     | YES  | bigint                      | pg_catalog | int8
  19 | type_INTEGER      | col             |      1 |     | YES  | bigint                      | pg_catalog | int8
@@ -223,10 +227,10 @@ SELECT n, table_name, column_name, tab_no, def, "null", data_type, udt_schema, u
  50 | fts_table_config  | v               |      2 |     | YES  | bytea                       | pg_catalog | bytea
  51 | RO_RW_test        | i               |      1 |     | NO   | bigint                      | pg_catalog | int8
  51 | RO_RW_test        | a               |      2 |     | YES  | text                        | pg_catalog | text
- 51 | RO_RW_test        | b               |      3 |     | YES  | double precision            | pg_catalog | float8
+ 51 | RO_RW_test        | b               |      3 |     | NO   | double precision            | pg_catalog | float8
  51 | RO_RW_test        | c               |      4 |     | YES  | bigint                      | pg_catalog | int8
  52 | Unicode data      | i               |      1 |     | YES  | text                        | pg_catalog | text
- 52 | Unicode data      | t               |      2 |     | YES  | text                        | pg_catalog | text
+ 52 | Unicode data      | t               |      2 |     | NO   | text                        | pg_catalog | text
  53 | type_BOOLEAN_oper | i               |      1 |     | YES  | bytea                       | pg_catalog | bytea
  53 | type_BOOLEAN_oper | i1              |      2 |     | YES  | bytea                       | pg_catalog | bytea
  53 | type_BOOLEAN_oper | b1              |      3 |     | YES  | bytea                       | pg_catalog | bytea
@@ -245,44 +249,58 @@ SELECT n, table_name, column_name, tab_no, def, "null", data_type, udt_schema, u
  55 | ♂                 | t₀              |      5 |     | YES  | date                        | pg_catalog | date
  55 | ♂                 | class           |      6 |     | YES  | text                        | pg_catalog | text
  55 | ♂                 | URL             |      7 |     | YES  | character varying           | pg_catalog | varchar
-(159 rows)
+ 56 | norowid           | k               |      1 |     | NO   | text                        | pg_catalog | text
+ 56 | norowid           | t               |      2 |     | YES  | text                        | pg_catalog | text
+ 56 | norowid           | b               |      3 |     | NO   | double precision            | pg_catalog | float8
+ 56 | norowid           | c               |      4 |     | YES  | bytea                       | pg_catalog | bytea
+ 57 | strict            | i               |      1 |     | NO   | bigint                      | pg_catalog | int8
+ 57 | strict            | t               |      2 |     | YES  | text                        | pg_catalog | text
+ 57 | strict            | b               |      3 |     | NO   | double precision            | pg_catalog | float8
+ 57 | strict            | c               |      4 |     | YES  | bytea                       | pg_catalog | bytea
+ 57 | strict            | a               |      5 |     | YES  | numeric                     | pg_catalog | numeric
+ 58 | fk_s_artist       | artistid        |      1 |     | YES  | bigint                      | pg_catalog | int8
+ 58 | fk_s_artist       | artistname      |      2 |     | YES  | text                        | pg_catalog | text
+ 59 | fk_d_track        | trackid         |      1 |     | YES  | bigint                      | pg_catalog | int8
+ 59 | fk_d_track        | trackname       |      2 |     | YES  | text                        | pg_catalog | text
+ 59 | fk_d_track        | trackartist     |      3 |     | YES  | bigint                      | pg_catalog | int8
+(173 rows)
 
 --Testcase 09: size/length/presision metadata
 SELECT n, table_name, column_name, tab_no, c_max_len, c_oct_len, num_pr, num_rdx, num_sc, dtp FROM fc;
  n  |    table_name     |   column_name   | tab_no | c_max_len | c_oct_len  | num_pr | num_rdx | num_sc | dtp 
 ----+-------------------+-----------------+--------+-----------+------------+--------+---------+--------+-----
-  1 | department        | department_id   |      1 |           |            |     64 |       2 |      0 |    
-  1 | department        | department_name |      2 |           | 1073741824 |        |         |        |    
-  2 | employee          | emp_id          |      1 |           |            |     64 |       2 |      0 |    
-  2 | employee          | emp_name        |      2 |           | 1073741824 |        |         |        |    
-  2 | employee          | emp_dept_id     |      3 |           |            |     64 |       2 |      0 |    
-  3 | empdata           | emp_id          |      1 |           |            |     64 |       2 |      0 |    
-  3 | empdata           | emp_dat         |      2 |           |            |        |      10 |        |    
-  4 | numbers           | a               |      1 |           |            |     64 |       2 |      0 |    
-  4 | numbers           | b               |      2 |       255 |       1020 |        |         |        |    
-  5 | t                 | a               |      1 |           |            |     64 |       2 |      0 |    
-  5 | t                 | b               |      2 |           |            |     64 |       2 |      0 |    
-  6 | multiprimary      | a               |      1 |           |            |     64 |       2 |      0 |    
-  6 | multiprimary      | b               |      2 |           |            |     64 |       2 |      0 |    
-  6 | multiprimary      | c               |      3 |           |            |     64 |       2 |      0 |    
-  7 | columntest        | a a             |      1 |           |            |     64 |       2 |      0 |    
-  7 | columntest        | b b             |      2 |           |            |     64 |       2 |      0 |    
-  7 | columntest        | c c             |      3 |           |            |     64 |       2 |      0 |    
-  8 | noprimary         | a               |      1 |           |            |     64 |       2 |      0 |    
-  8 | noprimary         | b               |      2 |           | 1073741824 |        |         |        |    
-  9 | limittest         | id              |      1 |           |            |     64 |       2 |      0 |    
-  9 | limittest         | x               |      2 |           |            |     64 |       2 |      0 |    
-  9 | limittest         | y               |      3 |           | 1073741824 |        |         |        |    
- 10 | grem1_1           | a               |      1 |           |            |     64 |       2 |      0 |    
- 11 | grem1_2           | a               |      1 |           |            |     64 |       2 |      0 |    
- 12 | case_exp          | c1              |      1 |           |            |     64 |       2 |      0 |    
- 12 | case_exp          | c3              |      2 |           | 1073741824 |        |         |        |    
- 12 | case_exp          | c6              |      3 |        10 |         40 |        |         |        |    
- 13 | type_STRING       | col             |      1 |           | 1073741824 |        |         |        |    
- 14 | type_BOOLEANpk    | col             |      1 |           |            |        |         |        |    
- 15 | type_BOOLEAN      | i               |      1 |           |            |     64 |       2 |      0 |    
- 15 | type_BOOLEAN      | b               |      2 |           |            |        |         |        |    
- 16 | type_BYTE         | col             |      1 |         1 |          4 |        |         |        |    
+  1 | employee          | emp_id          |      1 |           |            |     64 |       2 |      0 |    
+  1 | employee          | emp_name        |      2 |           | 1073741824 |        |         |        |    
+  1 | employee          | emp_dept_id     |      3 |           |            |     64 |       2 |      0 |    
+  2 | empdata           | emp_id          |      1 |           |            |     64 |       2 |      0 |    
+  2 | empdata           | emp_dat         |      2 |           |            |        |      10 |        |    
+  3 | numbers           | a               |      1 |           |            |     64 |       2 |      0 |    
+  3 | numbers           | b               |      2 |       255 |       1020 |        |         |        |    
+  4 | t                 | a               |      1 |           |            |     64 |       2 |      0 |    
+  4 | t                 | b               |      2 |           |            |     64 |       2 |      0 |    
+  5 | multiprimary      | a               |      1 |           |            |     64 |       2 |      0 |    
+  5 | multiprimary      | b               |      2 |           |            |     64 |       2 |      0 |    
+  5 | multiprimary      | c               |      3 |           |            |     64 |       2 |      0 |    
+  6 | columntest        | a a             |      1 |           |            |     64 |       2 |      0 |    
+  6 | columntest        | b b             |      2 |           |            |     64 |       2 |      0 |    
+  6 | columntest        | c c             |      3 |           |            |     64 |       2 |      0 |    
+  7 | noprimary         | a               |      1 |           |            |     64 |       2 |      0 |    
+  7 | noprimary         | b               |      2 |           | 1073741824 |        |         |        |    
+  8 | limittest         | id              |      1 |           |            |     64 |       2 |      0 |    
+  8 | limittest         | x               |      2 |           |            |     64 |       2 |      0 |    
+  8 | limittest         | y               |      3 |           | 1073741824 |        |         |        |    
+  9 | grem1_1           | a               |      1 |           |            |     64 |       2 |      0 |    
+ 10 | grem1_2           | a               |      1 |           |            |     64 |       2 |      0 |    
+ 11 | case_exp          | c1              |      1 |           |            |     64 |       2 |      0 |    
+ 11 | case_exp          | c3              |      2 |           | 1073741824 |        |         |        |    
+ 11 | case_exp          | c6              |      3 |        10 |         40 |        |         |        |    
+ 12 | type_STRING       | col             |      1 |           | 1073741824 |        |         |        |    
+ 13 | type_BOOLEANpk    | col             |      1 |           |            |        |         |        |    
+ 14 | type_BOOLEAN      | i               |      1 |           |            |     64 |       2 |      0 |    
+ 14 | type_BOOLEAN      | b               |      2 |           |            |        |         |        |    
+ 15 | type_BYTE         | col             |      1 |         1 |          4 |        |         |        |    
+ 16 | department        | department_id   |      1 |           |            |     64 |       2 |      0 |    
+ 16 | department        | department_name |      2 |           | 1073741824 |        |         |        |    
  17 | type_SINT         | col             |      1 |           |            |     64 |       2 |      0 |    
  18 | type_BINT         | col             |      1 |           |            |     64 |       2 |      0 |    
  19 | type_INTEGER      | col             |      1 |           |            |     64 |       2 |      0 |    
@@ -410,44 +428,58 @@ SELECT n, table_name, column_name, tab_no, c_max_len, c_oct_len, num_pr, num_rdx
  55 | ♂                 | t₀              |      5 |           |            |        |         |        |   0
  55 | ♂                 | class           |      6 |           | 1073741824 |        |         |        |    
  55 | ♂                 | URL             |      7 |        80 |        320 |        |         |        |    
-(159 rows)
+ 56 | norowid           | k               |      1 |           | 1073741824 |        |         |        |    
+ 56 | norowid           | t               |      2 |           | 1073741824 |        |         |        |    
+ 56 | norowid           | b               |      3 |           |            |     53 |       2 |        |    
+ 56 | norowid           | c               |      4 |           |            |        |         |        |    
+ 57 | strict            | i               |      1 |           |            |     64 |       2 |      0 |    
+ 57 | strict            | t               |      2 |           | 1073741824 |        |         |        |    
+ 57 | strict            | b               |      3 |           |            |     53 |       2 |        |    
+ 57 | strict            | c               |      4 |           |            |        |         |        |    
+ 57 | strict            | a               |      5 |           |            |        |      10 |        |    
+ 58 | fk_s_artist       | artistid        |      1 |           |            |     64 |       2 |      0 |    
+ 58 | fk_s_artist       | artistname      |      2 |           | 1073741824 |        |         |        |    
+ 59 | fk_d_track        | trackid         |      1 |           |            |     64 |       2 |      0 |    
+ 59 | fk_d_track        | trackname       |      2 |           | 1073741824 |        |         |        |    
+ 59 | fk_d_track        | trackartist     |      3 |           |            |     64 |       2 |      0 |    
+(173 rows)
 
 --Testcase 10: other metadata
 SELECT n, table_name, column_name, tab_no, it, ip, max_crd, dtdid, sref, ididt, isgen FROM fc;
  n  |    table_name     |   column_name   | tab_no | it | ip | max_crd | dtdid | sref | ididt | isgen 
 ----+-------------------+-----------------+--------+----+----+---------+-------+------+-------+-------
-  1 | department        | department_id   |      1 |    |    |         | 1     | NO   | NO    | NEVER
-  1 | department        | department_name |      2 |    |    |         | 2     | NO   | NO    | NEVER
-  2 | employee          | emp_id          |      1 |    |    |         | 1     | NO   | NO    | NEVER
-  2 | employee          | emp_name        |      2 |    |    |         | 2     | NO   | NO    | NEVER
-  2 | employee          | emp_dept_id     |      3 |    |    |         | 3     | NO   | NO    | NEVER
-  3 | empdata           | emp_id          |      1 |    |    |         | 1     | NO   | NO    | NEVER
-  3 | empdata           | emp_dat         |      2 |    |    |         | 2     | NO   | NO    | NEVER
-  4 | numbers           | a               |      1 |    |    |         | 1     | NO   | NO    | NEVER
-  4 | numbers           | b               |      2 |    |    |         | 2     | NO   | NO    | NEVER
-  5 | t                 | a               |      1 |    |    |         | 1     | NO   | NO    | NEVER
-  5 | t                 | b               |      2 |    |    |         | 2     | NO   | NO    | NEVER
-  6 | multiprimary      | a               |      1 |    |    |         | 1     | NO   | NO    | NEVER
-  6 | multiprimary      | b               |      2 |    |    |         | 2     | NO   | NO    | NEVER
-  6 | multiprimary      | c               |      3 |    |    |         | 3     | NO   | NO    | NEVER
-  7 | columntest        | a a             |      1 |    |    |         | 1     | NO   | NO    | NEVER
-  7 | columntest        | b b             |      2 |    |    |         | 2     | NO   | NO    | NEVER
-  7 | columntest        | c c             |      3 |    |    |         | 3     | NO   | NO    | NEVER
-  8 | noprimary         | a               |      1 |    |    |         | 1     | NO   | NO    | NEVER
-  8 | noprimary         | b               |      2 |    |    |         | 2     | NO   | NO    | NEVER
-  9 | limittest         | id              |      1 |    |    |         | 1     | NO   | NO    | NEVER
-  9 | limittest         | x               |      2 |    |    |         | 2     | NO   | NO    | NEVER
-  9 | limittest         | y               |      3 |    |    |         | 3     | NO   | NO    | NEVER
- 10 | grem1_1           | a               |      1 |    |    |         | 1     | NO   | NO    | NEVER
- 11 | grem1_2           | a               |      1 |    |    |         | 1     | NO   | NO    | NEVER
- 12 | case_exp          | c1              |      1 |    |    |         | 1     | NO   | NO    | NEVER
- 12 | case_exp          | c3              |      2 |    |    |         | 2     | NO   | NO    | NEVER
- 12 | case_exp          | c6              |      3 |    |    |         | 3     | NO   | NO    | NEVER
- 13 | type_STRING       | col             |      1 |    |    |         | 1     | NO   | NO    | NEVER
- 14 | type_BOOLEANpk    | col             |      1 |    |    |         | 1     | NO   | NO    | NEVER
- 15 | type_BOOLEAN      | i               |      1 |    |    |         | 1     | NO   | NO    | NEVER
- 15 | type_BOOLEAN      | b               |      2 |    |    |         | 2     | NO   | NO    | NEVER
- 16 | type_BYTE         | col             |      1 |    |    |         | 1     | NO   | NO    | NEVER
+  1 | employee          | emp_id          |      1 |    |    |         | 1     | NO   | NO    | NEVER
+  1 | employee          | emp_name        |      2 |    |    |         | 2     | NO   | NO    | NEVER
+  1 | employee          | emp_dept_id     |      3 |    |    |         | 3     | NO   | NO    | NEVER
+  2 | empdata           | emp_id          |      1 |    |    |         | 1     | NO   | NO    | NEVER
+  2 | empdata           | emp_dat         |      2 |    |    |         | 2     | NO   | NO    | NEVER
+  3 | numbers           | a               |      1 |    |    |         | 1     | NO   | NO    | NEVER
+  3 | numbers           | b               |      2 |    |    |         | 2     | NO   | NO    | NEVER
+  4 | t                 | a               |      1 |    |    |         | 1     | NO   | NO    | NEVER
+  4 | t                 | b               |      2 |    |    |         | 2     | NO   | NO    | NEVER
+  5 | multiprimary      | a               |      1 |    |    |         | 1     | NO   | NO    | NEVER
+  5 | multiprimary      | b               |      2 |    |    |         | 2     | NO   | NO    | NEVER
+  5 | multiprimary      | c               |      3 |    |    |         | 3     | NO   | NO    | NEVER
+  6 | columntest        | a a             |      1 |    |    |         | 1     | NO   | NO    | NEVER
+  6 | columntest        | b b             |      2 |    |    |         | 2     | NO   | NO    | NEVER
+  6 | columntest        | c c             |      3 |    |    |         | 3     | NO   | NO    | NEVER
+  7 | noprimary         | a               |      1 |    |    |         | 1     | NO   | NO    | NEVER
+  7 | noprimary         | b               |      2 |    |    |         | 2     | NO   | NO    | NEVER
+  8 | limittest         | id              |      1 |    |    |         | 1     | NO   | NO    | NEVER
+  8 | limittest         | x               |      2 |    |    |         | 2     | NO   | NO    | NEVER
+  8 | limittest         | y               |      3 |    |    |         | 3     | NO   | NO    | NEVER
+  9 | grem1_1           | a               |      1 |    |    |         | 1     | NO   | NO    | NEVER
+ 10 | grem1_2           | a               |      1 |    |    |         | 1     | NO   | NO    | NEVER
+ 11 | case_exp          | c1              |      1 |    |    |         | 1     | NO   | NO    | NEVER
+ 11 | case_exp          | c3              |      2 |    |    |         | 2     | NO   | NO    | NEVER
+ 11 | case_exp          | c6              |      3 |    |    |         | 3     | NO   | NO    | NEVER
+ 12 | type_STRING       | col             |      1 |    |    |         | 1     | NO   | NO    | NEVER
+ 13 | type_BOOLEANpk    | col             |      1 |    |    |         | 1     | NO   | NO    | NEVER
+ 14 | type_BOOLEAN      | i               |      1 |    |    |         | 1     | NO   | NO    | NEVER
+ 14 | type_BOOLEAN      | b               |      2 |    |    |         | 2     | NO   | NO    | NEVER
+ 15 | type_BYTE         | col             |      1 |    |    |         | 1     | NO   | NO    | NEVER
+ 16 | department        | department_id   |      1 |    |    |         | 1     | NO   | NO    | NEVER
+ 16 | department        | department_name |      2 |    |    |         | 2     | NO   | NO    | NEVER
  17 | type_SINT         | col             |      1 |    |    |         | 1     | NO   | NO    | NEVER
  18 | type_BINT         | col             |      1 |    |    |         | 1     | NO   | NO    | NEVER
  19 | type_INTEGER      | col             |      1 |    |    |         | 1     | NO   | NO    | NEVER
@@ -575,7 +607,21 @@ SELECT n, table_name, column_name, tab_no, it, ip, max_crd, dtdid, sref, ididt, 
  55 | ♂                 | t₀              |      5 |    |    |         | 5     | NO   | NO    | NEVER
  55 | ♂                 | class           |      6 |    |    |         | 6     | NO   | NO    | NEVER
  55 | ♂                 | URL             |      7 |    |    |         | 7     | NO   | NO    | NEVER
-(159 rows)
+ 56 | norowid           | k               |      1 |    |    |         | 1     | NO   | NO    | NEVER
+ 56 | norowid           | t               |      2 |    |    |         | 2     | NO   | NO    | NEVER
+ 56 | norowid           | b               |      3 |    |    |         | 3     | NO   | NO    | NEVER
+ 56 | norowid           | c               |      4 |    |    |         | 4     | NO   | NO    | NEVER
+ 57 | strict            | i               |      1 |    |    |         | 1     | NO   | NO    | NEVER
+ 57 | strict            | t               |      2 |    |    |         | 2     | NO   | NO    | NEVER
+ 57 | strict            | b               |      3 |    |    |         | 3     | NO   | NO    | NEVER
+ 57 | strict            | c               |      4 |    |    |         | 4     | NO   | NO    | NEVER
+ 57 | strict            | a               |      5 |    |    |         | 5     | NO   | NO    | NEVER
+ 58 | fk_s_artist       | artistid        |      1 |    |    |         | 1     | NO   | NO    | NEVER
+ 58 | fk_s_artist       | artistname      |      2 |    |    |         | 2     | NO   | NO    | NEVER
+ 59 | fk_d_track        | trackid         |      1 |    |    |         | 1     | NO   | NO    | NEVER
+ 59 | fk_d_track        | trackname       |      2 |    |    |         | 2     | NO   | NO    | NEVER
+ 59 | fk_d_track        | trackartist     |      3 |    |    |         | 3     | NO   | NO    | NEVER
+(173 rows)
 
 --Testcase 11:
 SELECT * FROM information_schema.column_options
@@ -624,7 +670,10 @@ IN (SELECT foreign_table_catalog, foreign_table_schema, foreign_table_name FROM 
  contrib_regression | public       | fts_table_config  | k             | key         | true
  contrib_regression | public       | RO_RW_test        | i             | key         | true
  contrib_regression | public       | Unicode data      | i             | key         | true
-(41 rows)
+ contrib_regression | public       | norowid           | k             | key         | true
+ contrib_regression | public       | strict            | i             | key         | true
+ contrib_regression | public       | fk_s_artist       | artistid      | key         | true
+(44 rows)
 
 --Testcase 11:
 DROP VIEW fc;
