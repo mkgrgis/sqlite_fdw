@@ -1,0 +1,52 @@
+sqlite-fdw (2.5.0-1) stable; urgency=medium
+
+  * Support PostgreSQL 17.0
+  * Add CI environment using GitHub Actions
+  * Add force_readonly option (#78), readonly mode for SQLite database
+  * Support uuid (#82,#95)
+  * Support bit and varbit (#83)
+  * Support bool as mixed affinity column (#88)
+  * NaN detecting (#100)
+  * Support ∞ values for numeric context (#97)
+  * Support mixed (selected) affinity for UPDATE (#95)
+  *	↓ From git 2.4.0 without deb package:
+  * Support PosgreSQL 16.0
+  * Add text transformations for pg DB encoding, encodings support
+  * Add updatable option on different levels
+  * Improve error message
+  * Refactor README.md
+  * Fix bugs
+  *	↓ From git 2.3.0 without deb package:
+  * Support PostgreSQL 15.0
+  * Bug fix of error handling in case of sqlite busy
+  *	↓ From git 2.2.0 without deb package:
+  * Support PostgreSQL 15β4
+  * Support push down CASE expressions
+  *	↓ From git 2.1.1 without deb package:
+  * Support Insert/Update with generated column
+  * Support check invalid options
+  * Bug fix: issue #44 on GitHub
+  * Bug fix: memory leak
+  *	↓ From git 2.1.0 without deb package:
+  * Support PostgreSQL14 related features: TRUNCATE, bulk INSERT
+  * Support keep connection control and connection cache information
+  * Refactored tests
+  *	↓ From git 2.0.0 without deb package:
+  * Support JOIN pushdown (LEFT,RIGHT,INNER)
+  * Support direct modification (UPDATE/DELETE)
+  * Support pushdown nest functions
+  * Support pushdown scalar operator ANY/ALL (ARRAY)
+  * Support pushdown ON CONFLICT DO NOTHING
+  * Refactored tests
+  * Bug fix: Don't push down lower/upper function
+  * Bug fix: Fix processing for DATE data type
+  * Bug fix: Do not prepare SQL statement during EXPLAIN
+  *	↓ From git 1.3.1 without deb package:
+  * Support function pushdown in the target list (for PGSpider)
+  * Support Windows build using Visual Studio project
+  * Bug fix: FETCH ... WITH TIES issue
+  * Bug fix: sqlite_fdw does not bind the correct numeric value when it is sub-query
+  *	↓ From prevous git releases without deb package:
+  * Support of PostgreSQL 9.6, 10, 11, 12 and 13.
+
+ -- Taiga Katayama <https://github.com/t-kataym> Thu, 10 Dec 2024 04:15:00 +0000  

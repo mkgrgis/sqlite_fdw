@@ -19,7 +19,11 @@
 
 #include <sqlite3.h>
 
+#if (PG_VERSION_NUM < 110000)
+#include "catalog/pg_type.h"
+#else
 #include "catalog/pg_type_d.h"
+#endif
 #include "commands/defrem.h"
 #include "mb/pg_wchar.h"
 #include "nodes/makefuncs.h"
@@ -30,7 +34,9 @@
 #include "utils/lsyscache.h"
 #include "utils/timestamp.h"
 #include "utils/uuid.h"
-
+#if (PG_VERSION_NUM < 120000)
+#include <math.h>
+#endif
 
 static char *
 			get_column_option_string(Oid relid, int varattno, char *optionname);

@@ -1,0 +1,21 @@
+Source: sqlite-fdw
+Section: database
+Priority: optional
+Maintainer: Taiga Katayama <https://github.com/t-kataym>
+Build-Depends:
+ libsqlite3-dev,
+ postgresql-server-dev-all (>= 217~),
+ make,
+ gcc
+Standards-Version: 4.6.1
+Rules-Requires-Root: no
+Vcs-Git: https://github.com/pgspider/sqlite_fdw.git
+Vcs-Browser: https://github.com/pgspider/sqlite_fdw
+Homepage: https://github.com/pgspider/sqlite_fdw
+
+Package: postgresql-PGVERSION-sqlite-fdw
+Architecture: any
+Depends: ${misc:Depends}, ${shlibs:Depends}, postgresql-PGVERSION
+Description: SQLite Foreign data wrapper for PostgreSQL
+ sqlite_fdw access to SQLite data from PostgreSQL with bidirectional data 
+ transport and some pushed to SQLite queries.

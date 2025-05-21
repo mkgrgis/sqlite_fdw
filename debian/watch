@@ -1,0 +1,2 @@
+version=4
+https://github.com/pgspider/sqlite_fdw/tags .*/v(.*).tar.gz

@@ -12,6 +12,9 @@
 
 #include "postgres.h"
 #include "sqlite_fdw.h"
+#if (PG_VERSION_NUM < 130000)
+	#include "access/sysattr.h"
+#endif
 
 #include "catalog/pg_aggregate.h"
 #include "catalog/pg_collation.h"
@@ -29,6 +32,9 @@
 #include "mb/pg_wchar.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
+#if (PG_VERSION_NUM < 130000)
+	#include "optimizer/clauses.h"
+#endif
 #include "optimizer/tlist.h"
 #include "parser/parsetree.h"
 #include "parser/parse_type.h"

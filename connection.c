@@ -21,6 +21,9 @@
 #include "optimizer/cost.h"
 #include "utils/builtins.h"
 #include "utils/inval.h"
+#if (PG_VERSION_NUM < 110000)
+	#include "utils/memutils.h"
+#endif
 #include "utils/syscache.h"
 
 

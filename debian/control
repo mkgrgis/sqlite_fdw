@@ -1,0 +1,61 @@
+Source: sqlite-fdw
+Section: database
+Priority: optional
+Maintainer: Taiga Katayama <https://github.com/t-kataym>
+Build-Depends:
+ libsqlite3-dev,
+ postgresql-server-dev-all (>= 217~),
+Standards-Version: 4.6.1
+Rules-Requires-Root: no
+Vcs-Git: https://github.com/pgspider/sqlite_fdw.git
+Vcs-Browser: https://github.com/pgspider/sqlite_fdw
+Homepage: https://github.com/pgspider/sqlite_fdw
+
+Package: postgresql-11-sqlite-fdw
+Architecture: any
+Depends: ${misc:Depends}, ${shlibs:Depends}, postgresql-11
+Description: SQLite Foreign data wrapper for PostgreSQL
+ sqlite_fdw access to SQLite data from PostgreSQL with bidirectional data 
+ transport and some pushed to SQLite queries.
+ 
+Package: postgresql-12-sqlite-fdw
+Architecture: any
+Depends: ${misc:Depends}, ${shlibs:Depends}, postgresql-12
+Description: SQLite Foreign data wrapper for PostgreSQL
+ sqlite_fdw access to SQLite data from PostgreSQL with bidirectional data 
+ transport and some pushed to SQLite queries.
+
+Package: postgresql-13-sqlite-fdw
+Architecture: any
+Depends: ${misc:Depends}, ${shlibs:Depends}, postgresql-13
+Description: SQLite Foreign data wrapper for PostgreSQL
+ sqlite_fdw access to SQLite data from PostgreSQL with bidirectional data 
+ transport and some pushed to SQLite queries.
+
+Package: postgresql-14-sqlite-fdw
+Architecture: any
+Depends: ${misc:Depends}, ${shlibs:Depends}, postgresql-14
+Description: SQLite Foreign data wrapper for PostgreSQL
+ sqlite_fdw access to SQLite data from PostgreSQL with bidirectional data 
+ transport and some pushed to SQLite queries.
+
+Package: postgresql-15-sqlite-fdw
+Architecture: any
+Depends: ${misc:Depends}, ${shlibs:Depends}, postgresql-15
+Description: SQLite Foreign data wrapper for PostgreSQL
+ sqlite_fdw access to SQLite data from PostgreSQL with bidirectional data 
+ transport and some pushed to SQLite queries.
+
+Package: postgresql-16-sqlite-fdw
+Architecture: any
+Depends: ${misc:Depends}, ${shlibs:Depends}, postgresql-16
+Description: SQLite Foreign data wrapper for PostgreSQL
+ sqlite_fdw access to SQLite data from PostgreSQL with bidirectional data 
+ transport and some pushed to SQLite queries.
+
+Package: postgresql-17-sqlite-fdw
+Architecture: any
+Depends: ${misc:Depends}, ${shlibs:Depends}, postgresql-17
+Description: SQLite Foreign data wrapper for PostgreSQL
+ sqlite_fdw access to SQLite data from PostgreSQL with bidirectional data 
+ transport and some pushed to SQLite queries.

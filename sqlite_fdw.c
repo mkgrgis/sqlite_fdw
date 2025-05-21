@@ -51,6 +51,9 @@
 #include "utils/formatting.h"
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
+#if (PG_VERSION_NUM < 110000)
+	#include "utils/memutils.h"
+#endif
 #include "utils/selfuncs.h"
 
 
@@ -1740,8 +1743,11 @@ sqlitePlanForeignModify(PlannerInfo *root,
 			attno = col + FirstLowInvalidHeapAttributeNumber;
 #else
 		Bitmapset  *tmpset;
+#if (PG_VERSION_NUM >= 120000)
 		tmpset = bms_union(rte->updatedCols, rte->extraUpdatedCols);
-
+#else
+		tmpset = bms_copy(rte->updatedCols);
+#endif
 		while ((attno = bms_first_member(tmpset)) >= 0)
 		{
 			attno += FirstLowInvalidHeapAttributeNumber;

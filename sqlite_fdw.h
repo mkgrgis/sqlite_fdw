@@ -25,6 +25,10 @@
 #include "optimizer/var.h"
 #endif
 
+#if (PG_VERSION_NUM < 120000)
+#include "access/htup_details.h"
+#include "access/sysattr.h"
+#endif
 #include "funcapi.h"
 #include "fmgr.h"
 #include "foreign/foreign.h"

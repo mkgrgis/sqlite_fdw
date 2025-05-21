@@ -1,0 +1,9 @@
+Depends:
+ postgresql-common-dev,
+ @,
+ locales-all,
+ sqlite3,
+ tzdata-legacy,
+Tests: installcheck
+Restrictions: allow-stderr
+
