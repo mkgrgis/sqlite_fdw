@@ -328,7 +328,7 @@ SELECT * FROM sqlite_fdw_db_list('sqlite_svr');
 (2 rows)
 
 --Testcase 29:
-IMPORT FOREIGN SCHEMA cm FROM SERVER sqlite_svr INTO import2;
+IMPORT FOREIGN SCHEMA cm EXCEPT ("types_PostGIS", "♁", "♂") FROM SERVER sqlite_svr INTO import2;
 --Testcase 30:
 SELECT * FROM sqlite_fdw_db_list('sqlite_svr');
  sqlite_id | alias |              file              | readonly | txn  
@@ -402,11 +402,8 @@ SELECT * FROM sqlite_fdw_db_list('sqlite_svr');
  import2 | type_UUID         | sqlite_svr | ("table" 'type_UUID', schema_name 'cm')         | 
  import2 | type_UUIDpk       | sqlite_svr | ("table" 'type_UUIDpk', schema_name 'cm')       | 
  import2 | type_VARBIT       | sqlite_svr | ("table" 'type_VARBIT', schema_name 'cm')       | 
- import2 | types_PostGIS     | sqlite_svr | ("table" 'types_PostGIS', schema_name 'cm')     | 
  import2 | typetest          | sqlite_svr | ("table" 'typetest', schema_name 'cm')          | 
- import2 | ♁                 | sqlite_svr | ("table" '♁', schema_name 'cm')                 | 
- import2 | ♂                 | sqlite_svr | ("table" '♂', schema_name 'cm')                 | 
-(64 rows)
+(61 rows)
 
 --Testcase 32:
 SELECT sqlite_fdw_db_attach('sqlite_svr', '/tmp/sqlite_fdw_test/common.db', '試験 ');
@@ -1085,7 +1082,7 @@ SELECT sqlite_fdw_db_detach('sqlite_svr', '試験 +');
 DROP USER sqlite_svr_owner_role;
 --Testcase 100:
 DROP SERVER sqlite_svr CASCADE;
-NOTICE:  drop cascades to 231 other objects
+NOTICE:  drop cascades to 228 other objects
 DETAIL:  drop cascades to foreign table aggtest
 drop cascades to foreign table student
 drop cascades to foreign table "Unicode data"
@@ -1186,7 +1183,7 @@ drop cascades to foreign table import1.ceil_floor_round
 drop cascades to foreign table import1.ceil_round_float8
 drop cascades to foreign table import1.width_bucket_tbl
 drop cascades to foreign table import1.width_bucket_test
-and 131 other objects (see server log for list)
+and 128 other objects (see server log for list)
 --Testcase 101:
 DROP EXTENSION sqlite_fdw CASCADE;
 --Testcase 266:

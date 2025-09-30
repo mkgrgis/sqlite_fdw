@@ -5,9 +5,9 @@ on:
   pull_request:  
   push:
     branches:
-      - master
-      - main
-      - *
+      - 'master'
+      - 'main'
+      - '**'
 jobs:
   detect-pgversion:
     runs-on: ubuntu-22.04

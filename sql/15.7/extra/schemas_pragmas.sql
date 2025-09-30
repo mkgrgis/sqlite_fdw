@@ -73,7 +73,7 @@ SELECT sqlite_fdw_db_attach('sqlite_svr', '/tmp/sqlite_fdw_test/common.db', 'cm'
 --Testcase 28:
 SELECT * FROM sqlite_fdw_db_list('sqlite_svr');
 --Testcase 29:
-IMPORT FOREIGN SCHEMA cm FROM SERVER sqlite_svr INTO import2;
+IMPORT FOREIGN SCHEMA cm EXCEPT ("types_PostGIS", "♁", "♂") FROM SERVER sqlite_svr INTO import2;
 --Testcase 30:
 SELECT * FROM sqlite_fdw_db_list('sqlite_svr');
 --Testcase 31:

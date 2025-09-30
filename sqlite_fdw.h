@@ -16,10 +16,10 @@
 #include "sqlite3.h"
 
 #if (PG_VERSION_NUM >= 120000)
-#include "nodes/pathnodes.h"
 #include "access/table.h"
-#include "utils/float.h"
+#include "nodes/pathnodes.h"
 #include "optimizer/optimizer.h"
+#include "utils/float.h"
 #else
 #include "nodes/relation.h"
 #include "optimizer/var.h"
@@ -27,6 +27,9 @@
 
 #include "funcapi.h"
 #include "fmgr.h"
+#if (PG_VERSION_NUM >= 180000)
+#include "foreign/fdwapi.h"
+#endif
 #include "foreign/foreign.h"
 #include "lib/stringinfo.h"
 #include "utils/rel.h"
@@ -194,6 +197,7 @@ typedef struct SqliteFdwRelationInfo
 	/* Estimated size and cost for a scan or join. */
 	double		rows;
 	int			width;
+	int			disabled_nodes;
 	Cost		startup_cost;
 	Cost		total_cost;
 

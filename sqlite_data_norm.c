@@ -740,8 +740,14 @@ ipaddr_str(const unsigned char* pBlob, int len, char* tmp)
 	char   				   *dst;
 
 	memset(tmp, '\0', MAX_IP_TEXT_CHAR_LENGTH +1);
+#if (PG_VERSION_NUM >= 130000)
 	dst = pg_inet_net_ntop(ipfamily, pBlob, bits,
 						   tmp, MAX_IP_TEXT_CHAR_LENGTH);
+#else
+	dst = inet_net_ntop(ipfamily, pBlob, bits,
+						   tmp, MAX_IP_TEXT_CHAR_LENGTH);
+#endif
+
 	if (dst == NULL)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_BINARY_REPRESENTATION),
@@ -863,7 +869,12 @@ sqlite_fdw_ipaddr_blob(sqlite3_context* context, int argc, sqlite3_value** argv)
 		 */
 		int				family = (strchr(txt, ':') != NULL) ? PGSQL_AF_INET6 : PGSQL_AF_INET;
 		bool			is_cidr = (strchr(txt, '/') != NULL);
+#if (PG_VERSION_NUM >= 130000)
 		unsigned char	bits = pg_inet_net_pton(family, txt, aBlob, -1);
+#else
+		unsigned char	bits = inet_net_pton(family, txt, aBlob, -1);
+#endif
+
 		int				ip_len = family == PGSQL_AF_INET ? 4 : 16;
 		int				maxbits = ip_len * CHAR_BIT;
 

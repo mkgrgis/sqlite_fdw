@@ -18,6 +18,7 @@
 #endif
 
 #include <sqlite3.h>
+#include <math.h>
 
 #include "catalog/pg_type_d.h"
 #include "commands/defrem.h"
