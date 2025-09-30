@@ -52,7 +52,7 @@ if (count != MACADDR8_LEN)  \
 /*
  * This UUID SQLite extension as a group of UUID C functions
  * implements functions that handling RFC-4122 UUIDs
- * Three SQL functions are implemented:
+ * Following SQL functions are implemented:
  *
  *	 sqlite_fdw_uuid_str(X)   - convert a UUID X into a well-formed UUID string
  *	 sqlite_fdw_uuid_blob(X)  - convert a UUID X into a 16-byte blob
@@ -100,9 +100,10 @@ if (count != MACADDR8_LEN)  \
  */
 
 /*
- * Translate a single byte of Hex into an integer.
- * This routine only works if h really is a valid hexadecimal
- * character:  0..9a..fA..F
+ * sqlite_fdw_data_norm_UuidHexToInt
+ *		Translate a single byte of Hex into an integer.
+ *		This routine only works if h really is a valid hexadecimal
+ *		character:  0..9a..fA..F
  */
 static unsigned char
 sqlite_fdw_data_norm_UuidHexToInt(int h)
@@ -118,12 +119,13 @@ sqlite_fdw_data_norm_UuidHexToInt(int h)
 }
 
 /*
- * Attempt to parse a zero-terminated input string zs into a binary
- * UUID.  Return 1 on success, or 0 if the input string is not
- * parsable.
+ * sqlite_fdw_uuid_blob
+ *		Attempt to parse a zero-terminated input string zs into a binary
+ *		UUID.  Return 1 on success, or 0 if the input string is not
+ *		parsable.
  */
 static int
-sqlite_fdw_uuid_blob (const unsigned char* s0, unsigned char* Blob)
+sqlite_fdw_uuid_blob (const unsigned char* s0, unsigned char* pBlob)
 {
 	int i;
 	unsigned char* s = (unsigned char*)s0;
@@ -135,7 +137,7 @@ sqlite_fdw_uuid_blob (const unsigned char* s0, unsigned char* Blob)
 			s++;
 		if (isxdigit(s[0]) && isxdigit(s[1]))
 		{
-			Blob[i] = (sqlite_fdw_data_norm_UuidHexToInt(s[0]) << 4) + sqlite_fdw_data_norm_UuidHexToInt(s[1]);
+			pBlob[i] = (sqlite_fdw_data_norm_UuidHexToInt(s[0]) << 4) + sqlite_fdw_data_norm_UuidHexToInt(s[1]);
 			s += 2;
 		}
 		else
@@ -149,7 +151,8 @@ sqlite_fdw_uuid_blob (const unsigned char* s0, unsigned char* Blob)
 }
 
 /*
- * uuid_generate generates a version 4 UUID as a string
+ * uuid_generate
+ *		generates a version 4 UUID as a string
  *
  *static void uuid_generate(sqlite3_context* context, int argc, sqlite3_value** argv)
  *{
@@ -164,7 +167,8 @@ sqlite_fdw_uuid_blob (const unsigned char* s0, unsigned char* Blob)
  */
 
 /*
- * aBlob to RFC UUID string with 36 characters
+ * sqlite3UuidBlobToStr
+ *		aBlob to RFC UUID string with 36 characters
  */
 static void
 sqlite3UuidBlobToStr( const unsigned char *aBlob, unsigned char *zs)
@@ -187,8 +191,9 @@ sqlite3UuidBlobToStr( const unsigned char *aBlob, unsigned char *zs)
 }
 
 /*
- * Converts argument BLOB-UUID into a well-formed UUID string.
- * X can be either a string or a blob.
+ * sqlite_fdw_uuid_str
+ *		Converts argument BLOB-UUID into a well-formed UUID string.
+ *		X can be either a string or a blob.
  */
 static void
 sqlite_fdw_uuid_str(sqlite3_context* context, int argc, sqlite3_value** argv)
@@ -225,7 +230,8 @@ sqlite_fdw_uuid_str(sqlite3_context* context, int argc, sqlite3_value** argv)
 }
 
 /*
- * sqlite_fdw_data_norm_uuid normalize text or blob UUID argv[0] into a 16-byte blob.
+ * sqlite_fdw_data_norm_uuid
+ *		normalize text or blob UUID argv[0] into a 16-byte blob.
  */
 static void
 sqlite_fdw_data_norm_uuid(sqlite3_context* context, int argc, sqlite3_value** argv)
@@ -248,8 +254,9 @@ sqlite_fdw_data_norm_uuid(sqlite3_context* context, int argc, sqlite3_value** ar
 /* ********************* End of UUID SQLite extension *********************** */
 
 /*
- * ISO:SQL valid boolean values with text affinity such as Y, no, f, t, oN etc.
- * will be treated as boolean like in PostgreSQL console input
+ * sqlite_fdw_data_norm_bool
+ *		ISO:SQL valid boolean values with text affinity such as Y, no, f, t, oN etc.
+ *		will be treated as boolean like in PostgreSQL console input
  */
 static void
 sqlite_fdw_data_norm_bool(sqlite3_context* context, int argc, sqlite3_value** argv)
@@ -356,7 +363,8 @@ sqlite_fdw_data_norm_bool(sqlite3_context* context, int argc, sqlite3_value** ar
 
 
 /*
- * Try to check SQLite value if there is any ∞ value with text affinity
+ * infinity_processing
+ *		Try to check SQLite value if there is any ∞ value with text affinity
  */
 static inline bool
 infinity_processing (double* d, const char* t)
@@ -384,10 +392,11 @@ infinity_processing (double* d, const char* t)
 }
 
 /*
- * ISO:SQL valid float/double precision values with text affinity such as Infinity or Inf
- * will be treated as float like in PostgreSQL console input
- * Note: SQLite also have Infinity support with real affinity, but this values
- * isn't suitable for insert, there is any overflow number instead
+ * sqlite_fdw_data_norm_float
+ *		ISO:SQL valid float/double precision values with text affinity such as Infinity or Inf
+ *		will be treated as float like in PostgreSQL console input
+ *		Note: SQLite also have Infinity support with real affinity, but this values
+ *		isn't suitable for insert, there is any overflow number instead
  */
 static void
 sqlite_fdw_data_norm_float(sqlite3_context* context, int argc, sqlite3_value** argv)
@@ -427,7 +436,8 @@ sqlite_fdw_data_norm_float(sqlite3_context* context, int argc, sqlite3_value** a
 }
 
 /*
- * Converts argument int64-MAC address into a well-formed MAC address string.
+ * sqlite_fdw_macaddr_str
+ *		Converts argument int64-MAC address into a well-formed MAC address string.
  */
 static void
 sqlite_fdw_macaddr_str(sqlite3_context* context, int argc, sqlite3_value** argv)
@@ -485,12 +495,13 @@ sqlite_fdw_macaddr_str(sqlite3_context* context, int argc, sqlite3_value** argv)
 }
 
 /*
- * Attempt to parse a zero-terminated input string zs into a int64
- * as 6 bytes MAC address. Return 1 if ok, or 0 if the input string is not
- * parsable.
+ * sqlite_fdw_macaddr6_int
+ *		Attempt to parse a zero-terminated input string zs into a int64
+ *		as 6 bytes MAC address. Return 1 if ok, or 0 if the input string is not
+ *		parsable.
  */
 static int
-sqlite_fdw_macaddr6_int (const unsigned char* s, sqlite_uint64*	i)
+sqlite_fdw_macaddr6_int(const unsigned char* s, sqlite_uint64*	i)
 {
 	 int		 a,
 				 b,
@@ -531,12 +542,13 @@ sqlite_fdw_macaddr6_int (const unsigned char* s, sqlite_uint64*	i)
 }
 
 /*
- * Attempt to parse a zero-terminated input string zs into a int64
- * as 8 bytes MAC address. Return 1 if ok, or 0 if the input string is not
- * parsable.
+ * sqlite_fdw_macaddr8_int
+ *		Attempt to parse a zero-terminated input string zs into a int64
+ *		as 8 bytes MAC address. Return 1 if ok, or 0 if the input string is not
+ *		parsable.
  */
 static int
-sqlite_fdw_macaddr8_int (const unsigned char* s, sqlite_uint64*	i)
+sqlite_fdw_macaddr8_int(const unsigned char* s, sqlite_uint64*	i)
 {
 	 int 		 a,
 				 b,
@@ -584,7 +596,7 @@ sqlite_fdw_macaddr8_int (const unsigned char* s, sqlite_uint64*	i)
 
 /*
  * sqlite_fdw_data_norm_macaddr
- *		normalize text or integer or blob MAC address argv[0] into sqlite_int64.
+ *		normalize text or ineger or blob macaddr argv[0] into sqlite3_uint64.
  */
 static void
 sqlite_fdw_data_norm_macaddr(sqlite3_context* context, int argc, sqlite3_value** argv)
@@ -664,7 +676,9 @@ sqlite_fdw_data_norm_macaddr(sqlite3_context* context, int argc, sqlite3_value**
 }
 
 /*
- * Converts argv[0] int-MAC address (both 6 or 8 bytes) to MAC-address BLOB.
+ * sqlite_fdw_macaddr_blob
+ *		Converts argument MAC address (both 6 or 8 bytes) with integer
+ *		affinity to similar MAC address with BLOB affinity.
  */
 static void
 sqlite_fdw_macaddr_blob(sqlite3_context* context, int argc, sqlite3_value** argv)
@@ -961,8 +975,9 @@ sqlite_fdw_ipaddr_int(sqlite3_context* context, int argc, sqlite3_value** argv)
 }
 
 /*
- * Makes pg error from SQLite error.
- * Interrupts normal executing, no need return after place of calling
+ * error_catcher
+ *		Makes pg error from SQLite error.
+ *		Interrupts normal executing, no need return after place of calling
  */
 static void
 error_catcher(sqlite3* db, int rc)
@@ -980,9 +995,10 @@ error_catcher(sqlite3* db, int rc)
 }
 
 /*
- * Add data normalization fuctions to SQLite internal namespace for calling
- * in deparse context.
- * This is main function of internal SQLite extension presented in this file.
+ * sqlite_fdw_data_norm_functs_init
+ *		Add data normalization fuctions to SQLite internal namespace for calling
+ *		in deparse context.
+ *		This is main function of internal SQLite extension presented in this file.
  */
 void
 sqlite_fdw_data_norm_functs_init(sqlite3* db)
