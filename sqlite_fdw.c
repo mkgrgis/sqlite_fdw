@@ -22,6 +22,9 @@
 #include "foreign/fdwapi.h"
 #include "funcapi.h"
 #include "mb/pg_wchar.h"
+#if (PG_VERSION_NUM < 110000)
+	#include "utils/memutils.h"
+#endif
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"

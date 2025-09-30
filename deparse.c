@@ -29,6 +29,9 @@
 #include "mb/pg_wchar.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
+#if PG_VERSION_NUM < 120000
+	#include "optimizer/clauses.h"
+#endif
 #include "optimizer/tlist.h"
 #include "parser/parsetree.h"
 #include "parser/parse_type.h"
