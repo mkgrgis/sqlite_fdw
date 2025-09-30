@@ -51,6 +51,7 @@ SELECT * FROM ft;
  contrib_regression    | public               | type_MACADDR       | contrib_regression     | sqlite_svr          | 31
  contrib_regression    | public               | type_MACADDR8pk    | contrib_regression     | sqlite_svr          | 32
  contrib_regression    | public               | type_MACADDR8      | contrib_regression     | sqlite_svr          | 33
+<<<<<<< HEAD
  contrib_regression    | public               | types_PostGIS      | contrib_regression     | sqlite_svr          | 34
  contrib_regression    | public               | type_JSON          | contrib_regression     | sqlite_svr          | 35
  contrib_regression    | public               | type_JSONB         | contrib_regression     | sqlite_svr          | 36
@@ -78,6 +79,37 @@ SELECT * FROM ft;
  contrib_regression    | public               | ♂                  | contrib_regression     | sqlite_svr          | 58
 (58 rows)
 >>>>>>> origin/returning
+=======
+ contrib_regression    | public               | type_INETpk        | contrib_regression     | sqlite_svr          | 34
+ contrib_regression    | public               | type_INET          | contrib_regression     | sqlite_svr          | 35
+ contrib_regression    | public               | types_PostGIS      | contrib_regression     | sqlite_svr          | 36
+ contrib_regression    | public               | type_JSON          | contrib_regression     | sqlite_svr          | 37
+ contrib_regression    | public               | type_JSONB         | contrib_regression     | sqlite_svr          | 38
+ contrib_regression    | public               | BitT               | contrib_regression     | sqlite_svr          | 39
+ contrib_regression    | public               | notype             | contrib_regression     | sqlite_svr          | 40
+ contrib_regression    | public               | typetest           | contrib_regression     | sqlite_svr          | 41
+ contrib_regression    | public               | type_TEXT          | contrib_regression     | sqlite_svr          | 42
+ contrib_regression    | public               | alltypetest        | contrib_regression     | sqlite_svr          | 43
+ contrib_regression    | public               | json_osm_test      | contrib_regression     | sqlite_svr          | 44
+ contrib_regression    | public               | shorty             | contrib_regression     | sqlite_svr          | 45
+ contrib_regression    | public               | A a                | contrib_regression     | sqlite_svr          | 46
+ contrib_regression    | public               | fts_table          | contrib_regression     | sqlite_svr          | 47
+ contrib_regression    | public               | fts_table_data     | contrib_regression     | sqlite_svr          | 48
+ contrib_regression    | public               | fts_table_idx      | contrib_regression     | sqlite_svr          | 49
+ contrib_regression    | public               | fts_table_content  | contrib_regression     | sqlite_svr          | 50
+ contrib_regression    | public               | fts_table_docsize  | contrib_regression     | sqlite_svr          | 51
+ contrib_regression    | public               | fts_table_config   | contrib_regression     | sqlite_svr          | 52
+ contrib_regression    | public               | RO_RW_test         | contrib_regression     | sqlite_svr          | 53
+ contrib_regression    | public               | Unicode data       | contrib_regression     | sqlite_svr          | 54
+ contrib_regression    | public               | type_BOOLEAN_oper  | contrib_regression     | sqlite_svr          | 55
+ contrib_regression    | public               | ♁                  | contrib_regression     | sqlite_svr          | 56
+ contrib_regression    | public               | ♂                  | contrib_regression     | sqlite_svr          | 57
+ contrib_regression    | public               | norowid            | contrib_regression     | sqlite_svr          | 58
+ contrib_regression    | public               | strict             | contrib_regression     | sqlite_svr          | 59
+ contrib_regression    | public               | fk_s_artist        | contrib_regression     | sqlite_svr          | 60
+ contrib_regression    | public               | fk_d_track         | contrib_regression     | sqlite_svr          | 61
+(61 rows)
+>>>>>>> origin/schemas_ini
 
 --Testcase 07:
 CREATE VIEW fc AS (
@@ -150,12 +182,12 @@ SELECT n, table_name, column_name, tab_no, def, "null", data_type, udt_schema, u
  35 | type_INET         | i               |      1 |     | YES  | bigint                      | pg_catalog | int8
  35 | type_INET         | ip              |      2 |     | YES  | inet                        | pg_catalog | inet
  36 | types_PostGIS     | i               |      1 |     | YES  | bigint                      | pg_catalog | int8
- 36 | types_PostGIS     | gm              |      2 |     | YES  | USER-DEFINED                | public     | geometry
- 36 | types_PostGIS     | gg              |      3 |     | YES  | USER-DEFINED                | public     | geography
+ 36 | types_PostGIS     | gm              |      2 |     | YES  | bytea                       | pg_catalog | bytea
+ 36 | types_PostGIS     | gg              |      3 |     | YES  | bytea                       | pg_catalog | bytea
  36 | types_PostGIS     | r               |      4 |     | YES  | numeric                     | pg_catalog | numeric
  36 | types_PostGIS     | t               |      5 |     | YES  | text                        | pg_catalog | text
- 36 | types_PostGIS     | gm1             |      6 |     | YES  | USER-DEFINED                | public     | geometry
- 36 | types_PostGIS     | gg1             |      7 |     | YES  | USER-DEFINED                | public     | geography
+ 36 | types_PostGIS     | gm1             |      6 |     | YES  | bytea                       | pg_catalog | bytea
+ 36 | types_PostGIS     | gg1             |      7 |     | YES  | bytea                       | pg_catalog | bytea
  37 | type_JSON         | i               |      1 |     | YES  | bigint                      | pg_catalog | int8
  37 | type_JSON         | j               |      2 |     | YES  | json                        | pg_catalog | json
  37 | type_JSON         | ot              |      3 |     | YES  | character varying           | pg_catalog | varchar
@@ -231,16 +263,16 @@ SELECT n, table_name, column_name, tab_no, def, "null", data_type, udt_schema, u
  52 | fts_table_config  | v               |      2 |     | YES  | bytea                       | pg_catalog | bytea
  53 | RO_RW_test        | i               |      1 |     | NO   | bigint                      | pg_catalog | int8
  53 | RO_RW_test        | a               |      2 |     | YES  | text                        | pg_catalog | text
- 53 | RO_RW_test        | b               |      3 |     | YES  | double precision            | pg_catalog | float8
+ 53 | RO_RW_test        | b               |      3 |     | NO   | double precision            | pg_catalog | float8
  53 | RO_RW_test        | c               |      4 |     | YES  | bigint                      | pg_catalog | int8
  54 | Unicode data      | i               |      1 |     | YES  | text                        | pg_catalog | text
- 54 | Unicode data      | t               |      2 |     | YES  | text                        | pg_catalog | text
+ 54 | Unicode data      | t               |      2 |     | NO   | text                        | pg_catalog | text
  55 | type_BOOLEAN_oper | i               |      1 |     | YES  | bytea                       | pg_catalog | bytea
  55 | type_BOOLEAN_oper | i1              |      2 |     | YES  | bytea                       | pg_catalog | bytea
  55 | type_BOOLEAN_oper | b1              |      3 |     | YES  | bytea                       | pg_catalog | bytea
  55 | type_BOOLEAN_oper | i2              |      4 |     | YES  | bytea                       | pg_catalog | bytea
  55 | type_BOOLEAN_oper | b2              |      5 |     | YES  | bytea                       | pg_catalog | bytea
- 56 | ♁                 | geom            |      1 |     | NO   | USER-DEFINED                | public     | geometry
+ 56 | ♁                 | geom            |      1 |     | NO   | bytea                       | pg_catalog | bytea
  56 | ♁                 | osm_type        |      2 |     | NO   | character varying           | pg_catalog | varchar
  56 | ♁                 | osm_id          |      3 |     | NO   | bigint                      | pg_catalog | int8
  56 | ♁                 | ver             |      4 |     | NO   | bigint                      | pg_catalog | int8
@@ -248,11 +280,12 @@ SELECT n, table_name, column_name, tab_no, def, "null", data_type, udt_schema, u
  56 | ♁                 | t               |      6 |     | YES  | jsonb                       | pg_catalog | jsonb
  57 | ♂                 | id              |      1 |     | YES  | bigint                      | pg_catalog | int8
  57 | ♂                 | UAI             |      2 |     | YES  | character varying           | pg_catalog | varchar
- 57 | ♂                 | ⌖               |      3 |     | YES  | USER-DEFINED                | public     | geometry
- 57 | ♂                 | geom            |      4 |     | YES  | USER-DEFINED                | public     | geometry
+ 57 | ♂                 | ⌖               |      3 |     | YES  | bytea                       | pg_catalog | bytea
+ 57 | ♂                 | geom            |      4 |     | YES  | bytea                       | pg_catalog | bytea
  57 | ♂                 | t₀              |      5 |     | YES  | date                        | pg_catalog | date
  57 | ♂                 | class           |      6 |     | YES  | text                        | pg_catalog | text
  57 | ♂                 | URL             |      7 |     | YES  | character varying           | pg_catalog | varchar
+<<<<<<< HEAD
 (162 rows)
 =======
  34 | types_PostGIS     | i               |      1 |     | YES  | bigint                      | pg_catalog | int8
@@ -370,6 +403,23 @@ SELECT n, table_name, column_name, tab_no, def, "null", data_type, udt_schema, u
  58 | ♂                 | URL             |      7 |     | YES  | character varying           | pg_catalog | varchar
 (168 rows)
 >>>>>>> origin/returning
+=======
+ 58 | norowid           | k               |      1 |     | NO   | text                        | pg_catalog | text
+ 58 | norowid           | t               |      2 |     | YES  | text                        | pg_catalog | text
+ 58 | norowid           | b               |      3 |     | NO   | double precision            | pg_catalog | float8
+ 58 | norowid           | c               |      4 |     | YES  | bytea                       | pg_catalog | bytea
+ 59 | strict            | i               |      1 |     | NO   | bigint                      | pg_catalog | int8
+ 59 | strict            | t               |      2 |     | YES  | text                        | pg_catalog | text
+ 59 | strict            | b               |      3 |     | NO   | double precision            | pg_catalog | float8
+ 59 | strict            | c               |      4 |     | YES  | bytea                       | pg_catalog | bytea
+ 59 | strict            | a               |      5 |     | YES  | numeric                     | pg_catalog | numeric
+ 60 | fk_s_artist       | artistid        |      1 |     | YES  | bigint                      | pg_catalog | int8
+ 60 | fk_s_artist       | artistname      |      2 |     | YES  | text                        | pg_catalog | text
+ 61 | fk_d_track        | trackid         |      1 |     | YES  | bigint                      | pg_catalog | int8
+ 61 | fk_d_track        | trackname       |      2 |     | YES  | text                        | pg_catalog | text
+ 61 | fk_d_track        | trackartist     |      3 |     | YES  | bigint                      | pg_catalog | int8
+(176 rows)
+>>>>>>> origin/schemas_ini
 
 --Testcase 09: size/length/presision metadata
 SELECT n, table_name, column_name, tab_no, c_max_len, c_oct_len, num_pr, num_rdx, num_sc, dtp FROM fc;
@@ -538,6 +588,7 @@ SELECT n, table_name, column_name, tab_no, c_max_len, c_oct_len, num_pr, num_rdx
  57 | ♂                 | t₀              |      5 |           |            |        |         |        |   0
  57 | ♂                 | class           |      6 |           | 1073741824 |        |         |        |    
  57 | ♂                 | URL             |      7 |        80 |        320 |        |         |        |    
+<<<<<<< HEAD
 (162 rows)
 =======
  34 | types_PostGIS     | i               |      1 |           |            |     64 |       2 |      0 |    
@@ -655,6 +706,23 @@ SELECT n, table_name, column_name, tab_no, c_max_len, c_oct_len, num_pr, num_rdx
  58 | ♂                 | URL             |      7 |        80 |        320 |        |         |        |    
 (168 rows)
 >>>>>>> origin/returning
+=======
+ 58 | norowid           | k               |      1 |           | 1073741824 |        |         |        |    
+ 58 | norowid           | t               |      2 |           | 1073741824 |        |         |        |    
+ 58 | norowid           | b               |      3 |           |            |     53 |       2 |        |    
+ 58 | norowid           | c               |      4 |           |            |        |         |        |    
+ 59 | strict            | i               |      1 |           |            |     64 |       2 |      0 |    
+ 59 | strict            | t               |      2 |           | 1073741824 |        |         |        |    
+ 59 | strict            | b               |      3 |           |            |     53 |       2 |        |    
+ 59 | strict            | c               |      4 |           |            |        |         |        |    
+ 59 | strict            | a               |      5 |           |            |        |      10 |        |    
+ 60 | fk_s_artist       | artistid        |      1 |           |            |     64 |       2 |      0 |    
+ 60 | fk_s_artist       | artistname      |      2 |           | 1073741824 |        |         |        |    
+ 61 | fk_d_track        | trackid         |      1 |           |            |     64 |       2 |      0 |    
+ 61 | fk_d_track        | trackname       |      2 |           | 1073741824 |        |         |        |    
+ 61 | fk_d_track        | trackartist     |      3 |           |            |     64 |       2 |      0 |    
+(176 rows)
+>>>>>>> origin/schemas_ini
 
 --Testcase 10: other metadata
 SELECT n, table_name, column_name, tab_no, it, ip, max_crd, dtdid, sref, ididt, isgen FROM fc;
@@ -823,6 +891,7 @@ SELECT n, table_name, column_name, tab_no, it, ip, max_crd, dtdid, sref, ididt, 
  57 | ♂                 | t₀              |      5 |    |    |         | 5     | NO   | NO    | NEVER
  57 | ♂                 | class           |      6 |    |    |         | 6     | NO   | NO    | NEVER
  57 | ♂                 | URL             |      7 |    |    |         | 7     | NO   | NO    | NEVER
+<<<<<<< HEAD
 (162 rows)
 =======
  34 | types_PostGIS     | i               |      1 |    |    |         | 1     | NO   | NO    | NEVER
@@ -940,6 +1009,23 @@ SELECT n, table_name, column_name, tab_no, it, ip, max_crd, dtdid, sref, ididt, 
  58 | ♂                 | URL             |      7 |    |    |         | 7     | NO   | NO    | NEVER
 (168 rows)
 >>>>>>> origin/returning
+=======
+ 58 | norowid           | k               |      1 |    |    |         | 1     | NO   | NO    | NEVER
+ 58 | norowid           | t               |      2 |    |    |         | 2     | NO   | NO    | NEVER
+ 58 | norowid           | b               |      3 |    |    |         | 3     | NO   | NO    | NEVER
+ 58 | norowid           | c               |      4 |    |    |         | 4     | NO   | NO    | NEVER
+ 59 | strict            | i               |      1 |    |    |         | 1     | NO   | NO    | NEVER
+ 59 | strict            | t               |      2 |    |    |         | 2     | NO   | NO    | NEVER
+ 59 | strict            | b               |      3 |    |    |         | 3     | NO   | NO    | NEVER
+ 59 | strict            | c               |      4 |    |    |         | 4     | NO   | NO    | NEVER
+ 59 | strict            | a               |      5 |    |    |         | 5     | NO   | NO    | NEVER
+ 60 | fk_s_artist       | artistid        |      1 |    |    |         | 1     | NO   | NO    | NEVER
+ 60 | fk_s_artist       | artistname      |      2 |    |    |         | 2     | NO   | NO    | NEVER
+ 61 | fk_d_track        | trackid         |      1 |    |    |         | 1     | NO   | NO    | NEVER
+ 61 | fk_d_track        | trackname       |      2 |    |    |         | 2     | NO   | NO    | NEVER
+ 61 | fk_d_track        | trackartist     |      3 |    |    |         | 3     | NO   | NO    | NEVER
+(176 rows)
+>>>>>>> origin/schemas_ini
 
 --Testcase 11:
 SELECT * FROM information_schema.column_options
@@ -991,6 +1077,7 @@ IN (SELECT foreign_table_catalog, foreign_table_schema, foreign_table_name FROM 
  contrib_regression | public       | RO_RW_test        | i             | key         | true
  contrib_regression | public       | Unicode data      | i             | key         | true
 <<<<<<< HEAD
+<<<<<<< HEAD
 (43 rows)
 =======
  contrib_regression | public       | ret_base          | c1            | key         | true
@@ -998,6 +1085,12 @@ IN (SELECT foreign_table_catalog, foreign_table_schema, foreign_table_name FROM 
  contrib_regression | public       | ret_j2t           | c1            | key         | true
 (44 rows)
 >>>>>>> origin/returning
+=======
+ contrib_regression | public       | norowid           | k             | key         | true
+ contrib_regression | public       | strict            | i             | key         | true
+ contrib_regression | public       | fk_s_artist       | artistid      | key         | true
+(46 rows)
+>>>>>>> origin/schemas_ini
 
 --Testcase 11:
 DROP VIEW fc;

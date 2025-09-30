@@ -165,14 +165,14 @@ CREATE VIRTUAL TABLE fts_table USING fts5(name, description, tokenize = porter);
 CREATE TABLE RO_RW_test (
     i   int primary key not null,
     a   text,
-    b   float,
-    c   int
+    b   float not null,
+    c   int default 10101
 );
 
 INSERT INTO RO_RW_test (i, a, b, c) VALUES (1, 'A',1.001, 0);
 
 -- test for PR #76 github
-CREATE TABLE "Unicode data" (i text primary key, t text);
+CREATE TABLE "Unicode data" (i text primary key, t text not null);
 
 INSERT INTO "Unicode data" (i, t) VALUES ('jap', 'いろはにほへと ちりぬるを わかよたれそ つねならむ うゐのおくやま けふこえて あさきゆめみし ゑひもせす.');
 INSERT INTO "Unicode data" (i, t) VALUES ('bul', 'Ах, чудна българска земьо, полюшвай цъфтящи жита.');
@@ -234,5 +234,43 @@ CREATE TABLE "♂" (
 	"class" text,
 	"URL" varchar(80)
 );
+
+-- no data operations, for metadata sqlite_fdw_rel_list test
+CREATE TABLE norowid (
+    k   text primary key,
+    t   text,
+    b   real not null,
+    c   blob default X'ADCD'
+) WITHOUT ROWID;
+
+-- no data operations, for metadata sqlite_fdw_rel_list test
+CREATE TABLE strict (
+    i   int primary key not null,
+    t   text,
+    b   real not null,
+    c   blob default X'ADCD',
+    a	any default 12
+) STRICT;
+
+-- no data operations, for metadata sqlite_fdw_fkeys_list test
+CREATE TABLE fk_s_artist(
+  artistid    INTEGER PRIMARY KEY,
+  artistname  TEXT
+);
+
+-- no data operations, for metadata sqlite_fdw_fkeys_list test
+CREATE TABLE fk_d_track(
+  trackid     INTEGER,
+  trackname   TEXT,
+  trackartist INTEGER,
+  FOREIGN KEY(trackartist) REFERENCES fk_s_artist(artistid)
+);
+
+INSERT INTO fk_s_artist VALUES (1, 'a');
+INSERT INTO fk_s_artist VALUES (2, 'b');
+
+INSERT INTO fk_d_track VALUES (1, 'bt', 2);
+-- Foreign key will failed after connecting with FK check
+INSERT INTO fk_d_track VALUES (3, 'ct', 3);
 
 analyze;

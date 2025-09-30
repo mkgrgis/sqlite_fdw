@@ -280,7 +280,7 @@ sqlite_fdw_data_norm_bool(sqlite3_context* context, int argc, sqlite3_value** ar
 		return;
 	}
 	l = sqlite3_value_bytes(arg);
-	if (l > 5)
+	if (l > 5) /* false - the longest text value for bool */
 	{
 		sqlite3_result_value(context, arg);
 		return;
@@ -360,7 +360,6 @@ sqlite_fdw_data_norm_bool(sqlite3_context* context, int argc, sqlite3_value** ar
 	}
 	sqlite3_result_value(context, arg);
 }
-
 
 /*
  * infinity_processing

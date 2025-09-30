@@ -180,6 +180,7 @@ PG_FUNCTION_INFO_V1(sqlite_fdw_handler);
 PG_FUNCTION_INFO_V1(sqlite_fdw_version);
 PG_FUNCTION_INFO_V1(sqlite_fdw_sqlite_version);
 PG_FUNCTION_INFO_V1(sqlite_fdw_sqlite_code_source);
+PG_FUNCTION_INFO_V1(sqlite_fdw_mem);
 
 
 static void sqliteGetForeignRelSize(PlannerInfo *root,
@@ -292,7 +293,7 @@ static bool sqliteAnalyzeForeignTable(Relation relation,
 static int sqliteIsForeignRelUpdatable(Relation rel);
 
 
-static List *sqliteImportForeignSchema(ImportForeignSchemaStmt *stmt,
+static List *sqliteImportForeignSchema(ImportForeignSchemaStmt *ifs_stmt,
 									   Oid serverOid);
 
 static void sqliteGetForeignJoinPaths(PlannerInfo *root,
@@ -311,11 +312,6 @@ static void	sqliteGetForeignUpperPaths(PlannerInfo *root,
 #endif
 );
 
-static void sqlite_prepare_wrapper(ForeignServer *server,
-								   sqlite3 * db, char *query,
-								   sqlite3_stmt * *result,
-								   const char **pzTail,
-								   bool is_cache);
 static void sqlite_to_pg_type(StringInfo str, char *typname);
 
 static TupleTableSlot **sqlite_execute_foreign_modify (EState *estate,
@@ -402,7 +398,6 @@ static int	sqlite_get_batch_size_option(Relation rel);
 #endif
 static void conversion_error_callback(void *arg);
 static int32 sqlite_affinity_eqv_to_pgtype(Oid type);
-const char* sqlite_datatype(int t);
 
 static const char *azType[] = { "?", "integer", "real", "text", "blob", "null" };
 
@@ -513,13 +508,19 @@ sqlite_fdw_sqlite_version(PG_FUNCTION_ARGS)
 }
 
 Datum
+sqlite_fdw_mem(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_INT64(sqlite3_memory_used());
+}
+
+Datum
 sqlite_fdw_sqlite_code_source(PG_FUNCTION_ARGS)
 {
 	PG_RETURN_TEXT_P(cstring_to_text(sqlite3_sourceid()));
 }
 
 /* Wrapper for sqlite3_prepare */
-static void
+void
 sqlite_prepare_wrapper(ForeignServer *server, sqlite3 * db, char *query, sqlite3_stmt * *stmt,
 					   const char **pzTail, bool is_cache)
 {
@@ -531,7 +532,8 @@ sqlite_prepare_wrapper(ForeignServer *server, sqlite3 * db, char *query, sqlite3
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
-				 errmsg("SQL error during prepare: %s %s", sqlite3_errmsg(db), query)
+				 errmsg("SQL error during prepare: %s", sqlite3_errmsg(db)),
+				 errcontext("%s", query)
 				 ));
 	}
 	/* cache stmt to finalize at last */
@@ -3344,7 +3346,7 @@ sqliteAnalyzeForeignTable(Relation relation,
  * Import a foreign schema
  */
 static List *
-sqliteImportForeignSchema(ImportForeignSchemaStmt *stmt,
+sqliteImportForeignSchema(ImportForeignSchemaStmt *ifs_stmt,
 						  Oid serverOid)
 {
 	sqlite3		   *volatile db = NULL;
@@ -3360,7 +3362,7 @@ sqliteImportForeignSchema(ImportForeignSchemaStmt *stmt,
 	elog(DEBUG1, "sqlite_fdw : %s", __func__);
 
 	/* Parse statement options */
-	foreach(lc, stmt->options)
+	foreach(lc, ifs_stmt->options)
 	{
 		DefElem		*def = (DefElem *) lfirst(lc);
 
@@ -3374,27 +3376,27 @@ sqliteImportForeignSchema(ImportForeignSchemaStmt *stmt,
 					 errmsg("invalid option \"%s\"", def->defname)));
 	}
 
-	server = GetForeignServerByName(stmt->server_name, false);
+	server = GetForeignServerByName(ifs_stmt->server_name, false);
 	db = sqlite_get_connection(server, false);
 
 	PG_TRY();
 	{
 		/* You want all tables, except system tables */
 		initStringInfo(&buf);
-		appendStringInfo(&buf, "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%%'");
+		appendStringInfo(&buf, "SELECT name FROM %s.sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%%%%'", quote_identifier(ifs_stmt->remote_schema));
 
 		/* Apply restrictions for LIMIT TO and EXCEPT */
-		if (stmt->list_type == FDW_IMPORT_SCHEMA_LIMIT_TO ||
-			stmt->list_type == FDW_IMPORT_SCHEMA_EXCEPT)
+		if (ifs_stmt->list_type == FDW_IMPORT_SCHEMA_LIMIT_TO ||
+			ifs_stmt->list_type == FDW_IMPORT_SCHEMA_EXCEPT)
 		{
 			bool		first_item = true;
 
 			appendStringInfoString(&buf, " AND name ");
-			if (stmt->list_type == FDW_IMPORT_SCHEMA_EXCEPT)
+			if (ifs_stmt->list_type == FDW_IMPORT_SCHEMA_EXCEPT)
 				appendStringInfoString(&buf, "NOT ");
 			appendStringInfoString(&buf, "IN (");
 
-			foreach(lc, stmt->table_list)
+			foreach(lc, ifs_stmt->table_list)
 			{
 				RangeVar   *rv = (RangeVar *) lfirst(lc);
 
@@ -3408,6 +3410,7 @@ sqliteImportForeignSchema(ImportForeignSchemaStmt *stmt,
 			appendStringInfoChar(&buf, ')');
 		}
 
+		elog(DEBUG2, "sqlite_fdw : query for foreign schema import : %s", buf.data);
 		sqlite_prepare_wrapper(server, db, buf.data, (sqlite3_stmt * *) & sql_stmt, NULL, false);
 
 		/* Scan all rows for this table */
@@ -3432,12 +3435,14 @@ sqliteImportForeignSchema(ImportForeignSchemaStmt *stmt,
 
 			resetStringInfo(&buf);
 			appendStringInfo(&buf, "CREATE FOREIGN TABLE %s.%s (\n",
-							 quote_identifier(stmt->local_schema), quote_identifier(table));
+							 quote_identifier(ifs_stmt->local_schema), quote_identifier(table));
 
 			query = palloc0(strlen(table) + 30);
-			sprintf(query, "PRAGMA table_info(%s)", quote_identifier(table));
+			sprintf(query, "PRAGMA %s.table_info(%s)", quote_identifier(ifs_stmt->remote_schema), quote_identifier(table));
 
 			sqlite_prepare_wrapper(server, db, query, (sqlite3_stmt * *) & pragma_stmt, NULL, false);
+
+			pfree(query);
 
 			for (;;)
 			{
@@ -3479,15 +3484,20 @@ sqliteImportForeignSchema(ImportForeignSchemaStmt *stmt,
 
 				if (default_val && import_default)
 					appendStringInfo(&buf, " DEFAULT %s", default_val);
-
 			}
 
 			sqlite3_finalize(pragma_stmt);
 			pragma_stmt = NULL;
 
 			appendStringInfo(&buf, "\n) SERVER %s\nOPTIONS (table ",
-							 quote_identifier(stmt->server_name));
+							 quote_identifier(ifs_stmt->server_name));
 			sqlite_deparse_string_literal(&buf, table);
+			if (strcmp(ifs_stmt->remote_schema, "main"))
+			{
+				/* don't prepare any schema_name option for default SQLite database/schema */
+				appendStringInfo(&buf, ", schema_name ");
+				sqlite_deparse_string_literal(&buf, quote_identifier(ifs_stmt->remote_schema));
+			}
 			appendStringInfoString(&buf, ");");
 			commands = lappend(commands, pstrdup(buf.data));
 
@@ -6313,3 +6323,4 @@ conversion_error_callback(void *arg)
 		pfree(err_cont_mess0);
 	}
 }
+

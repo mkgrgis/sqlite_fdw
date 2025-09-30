@@ -210,6 +210,7 @@ sqlite_deparseRelation(StringInfo buf, Relation rel)
 {
 	ForeignTable *table;
 	const char *relname = NULL;
+	char *schname = "main";
 	ListCell   *lc = NULL;
 
 	/* obtain additional catalog information. */
@@ -224,13 +225,15 @@ sqlite_deparseRelation(StringInfo buf, Relation rel)
 
 		if (strcmp(def->defname, "table") == 0)
 			relname = defGetString(def);
+		if (strcmp(def->defname, "schema_name") == 0)
+			schname = defGetString(def);
 	}
 
 	if (relname == NULL)
 		relname = RelationGetRelationName(rel);
 
 	/* always use main database for SQLite */
-	appendStringInfo(buf, "%s.%s", "main", sqlite_quote_identifier(relname, QUOTE));
+	appendStringInfo(buf, "%s.%s", schname, sqlite_quote_identifier(relname, QUOTE));
 }
 
 static char *
@@ -3318,7 +3321,7 @@ sqlite_deparse_const(Const *node, deparse_expr_cxt *context, int showtype)
 					if (is_negative_or_positive)
 						appendStringInfo(buf, "(%c", extval[0]);
 
-					appendStringInfo(buf, "9e999");
+					appendStringInfo(buf, "9.0e999");
 
 					if (is_negative_or_positive)
 						appendStringInfo(buf, ")");

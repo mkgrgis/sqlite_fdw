@@ -5,8 +5,8 @@ CREATE EXTENSION sqlite_fdw;
 --Testcase 45:
 CREATE SERVER sqlite_svr FOREIGN DATA WRAPPER sqlite_fdw
 OPTIONS (database '/tmp/sqlite_fdw_test/common.db');
---Testcase 47:
-CREATE EXTENSION postgis;
+--Testcase 46:
+CREATE SERVER sqlite2 FOREIGN DATA WRAPPER sqlite_fdw;
 IMPORT FOREIGN SCHEMA main FROM SERVER sqlite_svr INTO public;
 --Testcase 1:
 INSERT INTO "type_STRING"(col) VALUES ('string');
@@ -287,32 +287,78 @@ INSERT INTO type_JSON(col) VALUES ('[1, 2, "foo", null]');
 INSERT INTO type_JSON(col) VALUES ('{"bar": "baz", "balance": 7.77, "active": false}'::json);
 --Testcase 56
 SELECT * FROM type_JSON;
-                     col                     
----------------------------------------------
- [1,2,"foo",null]
- {"bar":"baz","balance":7.77,"active":false}
+                       col                        
+--------------------------------------------------
+ [1, 2, "foo", null]
+ {"bar": "baz", "balance": 7.77, "active": false}
 (2 rows)
 
 --Testcase 57
 DELETE FROM type_JSON;
---Testcase 60:
-DROP FOREIGN TABLE IF EXISTS "type_BOOLEAN";
---Testcase 61:
-CREATE FOREIGN TABLE "type_BOOLEAN" (i int, b boolean OPTIONS (key 'true')) SERVER sqlite_svr;
 --Testcase 62:
-INSERT INTO "type_BOOLEAN" (i, b) VALUES (1, 'on'), (2, false);
+DROP FOREIGN TABLE IF EXISTS "type_BOOLEAN";
 --Testcase 63:
-ALTER FOREIGN TABLE "type_BOOLEAN" DROP COLUMN i;
+CREATE FOREIGN TABLE "type_BOOLEAN" (i int, b boolean OPTIONS (key 'true')) SERVER sqlite_svr;
+--Testcase 108:
+INSERT INTO "type_BOOLEAN"(i, b) VALUES 
+  (1, TRUE), 
+  (2, FALSE), 
+  (3, TRUE), 
+  (4, FALSE), 
+  (5, true), 
+  (6, false), 
+  (7, 'Yes'), 
+  (8, 'YeS'), 
+  (9, 'yes'), 
+  (10, 'no'), 
+  (11, 'No'), 
+  (12, 'nO'), 
+  (13, 'off'), 
+  (14, 'oFf'), 
+  (15, 'on'), 
+  (16, 'ON'), 
+  (17, 't'), 
+  (18, 'T'), 
+  (19, 'Y'), 
+  (20, 'y'), 
+  (21, 'F'), 
+  (22, 'f'), 
+  (24, '0'), 
+  (25, '1'), 
+  (26, NULL);
 --Testcase 64:
+ALTER FOREIGN TABLE "type_BOOLEAN" DROP COLUMN i;
+--Testcase 65:
 SELECT * FROM "type_BOOLEAN"; -- OK
  b 
 ---
  t
  f
-(2 rows)
+ t
+ f
+ t
+ f
+ t
+ t
+ t
+ f
+ f
+ f
+ f
+ f
+ t
+ t
+ t
+ t
+ t
+ t
+ f
+ f
+ f
+ t
+ 
+(25 rows)
 
---Testcase 65:
-DELETE FROM "type_BOOLEAN";
 -- define INTEGER as TEXT column
 --Testcase 67:
 ALTER FOREIGN TABLE "type_INTEGER" ALTER COLUMN col TYPE text;
@@ -495,7 +541,7 @@ INSERT INTO "type_DOUBLE" VALUES (PI());
 --Testcase 109: ERR primary key
 INSERT INTO "type_DOUBLE" VALUES (PI());
 ERROR:  Failed to execute remote SQL
-HINT:  SQLite error 'UNIQUE constraint failed: type_DOUBLE.col', SQLite primary result code 19, extended result code 1555
+HINT:  SQLite error 'UNIQUE constraint failed: type_DOUBLE.col', SQLite result code 19
 CONTEXT:  SQL query: INSERT INTO main."type_DOUBLE"(`col`) VALUES (?)
 --Testcase 110:
 INSERT INTO "type_DOUBLE" VALUES ('Infinity');
@@ -514,12 +560,12 @@ SELECT * FROM "type_DOUBLE"; -- OK, +- Inf
 --Testcase 114: ERR primary key
 INSERT INTO "type_DOUBLE" VALUES ('Infinity');
 ERROR:  Failed to execute remote SQL
-HINT:  SQLite error 'UNIQUE constraint failed: type_DOUBLE.col', SQLite primary result code 19, extended result code 1555
+HINT:  SQLite error 'UNIQUE constraint failed: type_DOUBLE.col', SQLite result code 19
 CONTEXT:  SQL query: INSERT INTO main."type_DOUBLE"(`col`) VALUES (?)
 --Testcase 115: ERR primary key
 INSERT INTO "type_DOUBLE" VALUES ('-Infinity');
 ERROR:  Failed to execute remote SQL
-HINT:  SQLite error 'UNIQUE constraint failed: type_DOUBLE.col', SQLite primary result code 19, extended result code 1555
+HINT:  SQLite error 'UNIQUE constraint failed: type_DOUBLE.col', SQLite result code 19
 CONTEXT:  SQL query: INSERT INTO main."type_DOUBLE"(`col`) VALUES (?)
 --Testcase 116:
 SELECT * FROM "type_DOUBLE"; -- OK, +- Inf
@@ -531,13 +577,9 @@ SELECT * FROM "type_DOUBLE"; -- OK, +- Inf
          -Infinity
 (4 rows)
 
---Testcase 300:
-SET client_min_messages TO ERROR;
---Testcase 301: no details
+--Testcase 47:
 DROP EXTENSION sqlite_fdw CASCADE;
-<<<<<<< HEAD:expected/14.12/with_gis_support/type.out
-=======
-NOTICE:  drop cascades to 59 other objects
+NOTICE:  drop cascades to 56 other objects
 DETAIL:  drop cascades to server sqlite_svr
 drop cascades to foreign table department
 drop cascades to foreign table employee
@@ -571,7 +613,6 @@ drop cascades to foreign table "type_MACADDRpk"
 drop cascades to foreign table "type_MACADDR"
 drop cascades to foreign table "type_MACADDR8pk"
 drop cascades to foreign table "type_MACADDR8"
-drop cascades to foreign table "types_PostGIS"
 drop cascades to foreign table "BitT"
 drop cascades to foreign table notype
 drop cascades to foreign table typetest
@@ -588,8 +629,6 @@ drop cascades to foreign table fts_table_config
 drop cascades to foreign table "RO_RW_test"
 drop cascades to foreign table "Unicode data"
 drop cascades to foreign table "type_BOOLEAN_oper"
-drop cascades to foreign table "♁"
-drop cascades to foreign table "♂"
 drop cascades to foreign table norowid
 drop cascades to foreign table strict
 drop cascades to foreign table fk_s_artist
@@ -597,4 +636,3 @@ drop cascades to foreign table fk_d_track
 drop cascades to foreign table type_json
 drop cascades to foreign table "type_BOOLEAN"
 drop cascades to server sqlite2
->>>>>>> 869c722 (Initial schemas & PRAGMAs support implementation):expected/13.15/type_nogis.out

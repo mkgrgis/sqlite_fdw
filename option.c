@@ -44,7 +44,10 @@ static struct SqliteFdwOption valid_options[] =
 	{"database", ForeignServerRelationId},
 	{"keep_connections", ForeignServerRelationId},
 	{"force_readonly", ForeignServerRelationId},
+	{"integrity_check", ForeignServerRelationId},
+	{"temp_store_directory", ForeignServerRelationId},
 	{"table", ForeignTableRelationId},
+	{"schema_name", ForeignTableRelationId},
 	{"key", AttributeRelationId},
 	{"column_name", AttributeRelationId},
 	{"column_type", AttributeRelationId},
@@ -66,6 +69,19 @@ extern PGDLLEXPORT Datum sqlite_fdw_validator(PG_FUNCTION_ARGS);
 PG_FUNCTION_INFO_V1(sqlite_fdw_validator);
 bool
 			sqlite_is_valid_option(const char *option, Oid context);
+
+void
+validate_integrity_check_mode (const char *ic_mode)
+{
+	if (!(strcmp(ic_mode, "none") == 0 ||
+		  strcmp(ic_mode, "quick") == 0 ||
+		  strcmp(ic_mode, "full") == 0 ||
+		  strcmp(ic_mode, "fkeys") == 0 ))
+		ereport(ERROR,
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			 errmsg("invalid intertity check mode \"%s\"", ic_mode),
+			 errhint("none, quick, full, fkeys")));
+}
 
 /*
  * Validate the generic options given to a FOREIGN DATA WRAPPER, SERVER,
@@ -150,6 +166,11 @@ sqlite_fdw_validator(PG_FUNCTION_ARGS)
 			strcmp(def->defname, "force_readonly") == 0)
 		{
 			defGetBoolean(def);
+		}
+		else if (strcmp(def->defname, "integrity_check") == 0)
+		{
+			char* ic_mode = defGetString(def);
+			validate_integrity_check_mode(ic_mode);
 		}
 		else if (strcmp(def->defname, "batch_size") == 0)
 		{

@@ -37,8 +37,6 @@
 static char *
 			get_column_option_string(Oid relid, int varattno, char *optionname);
 static char *
-			sqlite_text_value_to_pg_db_encoding(sqlite3_value *val);
-static char *
 			int642binstr(sqlite3_int64 num, char *s, size_t len);
 static inline blobOutput
 			sqlite_make_JSONb (char* s);
@@ -262,7 +260,7 @@ sqlite_convert_to_pg(Form_pg_attribute att,
 							if (value_byte_size_blob_or_utf8)
 							{
 								const char* text_value = (const char*) sqlite3_value_text(val);
-								if (strcasecmp(text_value, "NaN") == 0)
+								if (strcasecmp(text_value, CHAR_NAN) == 0)
 									return (struct NullableDatum) {Float8GetDatum(NAN), false};
 								else if (isInfinity(text_value))
 								{
@@ -300,7 +298,7 @@ sqlite_convert_to_pg(Form_pg_attribute att,
 							if (value_byte_size_blob_or_utf8)
 							{
 								const char* text_value = (const char*) sqlite3_value_text(val);
-								if (strcasecmp(text_value, "NaN") == 0)
+								if (strcasecmp(text_value, CHAR_NAN) == 0)
 									return (struct NullableDatum) {Float8GetDatum(NAN), false};
 								else if (isInfinity(text_value))
 								{
@@ -392,7 +390,7 @@ sqlite_convert_to_pg(Form_pg_attribute att,
 							{
 								const char* text_value = (const char*) sqlite3_value_text(val);
 
-								if (strcasecmp(text_value, "NaN") == 0)
+								if (strcasecmp(text_value, CHAR_NAN) == 0)
 									return (struct NullableDatum) {Float8GetDatum(NAN), false};
 								else if (isInfinity(text_value))
 								{
@@ -1262,7 +1260,7 @@ sqlite_bind_sql_var(Form_pg_attribute att, int attnum, Datum value, sqlite3_stmt
  * sqlite_text_value_to_pg_db_encoding
  *		Converts SQLite text to PostgreSQL text with database encoding
  */
-static char *
+char *
 sqlite_text_value_to_pg_db_encoding(sqlite3_value *val)
 {
 	int pg_database_encoding = GetDatabaseEncoding(); /* very fast call, see PostgreSQL mbutils.c */
@@ -1276,7 +1274,12 @@ sqlite_text_value_to_pg_db_encoding(sqlite3_value *val)
 	else
 	{
 		/* There is no UTF16 in PostgreSQL for fast sqlite3_value_text16, hence always convert */
-		char * res = (char *) pg_do_encoding_conversion((unsigned char *) utf8_text_value, strlen(utf8_text_value), PG_UTF8, pg_database_encoding);
+		char * res = (char *) pg_do_encoding_conversion(
+			(unsigned char *) utf8_text_value,
+			sqlite3_value_bytes(val),
+			PG_UTF8,
+			pg_database_encoding
+		);
 		return res;
 	}
 }

@@ -1412,7 +1412,8 @@ SELECT * FROM multiprimary2;
 ALTER FOREIGN TABLE multiprimary2 ALTER COLUMN b OPTIONS (column_name 'nosuch column');
 --Testcase 119:
 SELECT * FROM multiprimary2;
-ERROR:  SQL error during prepare: no such column: nosuch column SELECT `b`, `nosuch column`, `b` FROM main."multiprimary"
+ERROR:  SQL error during prepare: no such column: nosuch column
+CONTEXT:  SELECT `b`, `nosuch column`, `b` FROM main."multiprimary"
 --Testcase 140:
 EXPLAIN (VERBOSE) SELECT * FROM multiprimary2;
                                    QUERY PLAN                                   
@@ -1424,7 +1425,8 @@ EXPLAIN (VERBOSE) SELECT * FROM multiprimary2;
 
 --Testcase 120:
 SELECT a FROM multiprimary2 WHERE b = 1;
-ERROR:  SQL error during prepare: no such column: nosuch column SELECT `b` FROM main."multiprimary" WHERE ((`nosuch column` = 1))
+ERROR:  SQL error during prepare: no such column: nosuch column
+CONTEXT:  SELECT `b` FROM main."multiprimary" WHERE ((`nosuch column` = 1))
 --Testcase 141:
 CREATE FOREIGN TABLE columntest(a int OPTIONS(column_name 'a a', key 'true'), "b b" int  OPTIONS(key 'true'), c int OPTIONS(column_name 'c c')) SERVER sqlite_svr;
 --Testcase 121:
@@ -1462,18 +1464,45 @@ SELECT * FROM noprimary;
 --get version
 --Testcase 153:
 \df sqlite*
-                                             List of functions
- Schema |             Name              | Result data type |           Argument data types           | Type 
---------+-------------------------------+------------------+-----------------------------------------+------
- public | sqlite_fdw_disconnect         | boolean          | text                                    | func
- public | sqlite_fdw_disconnect_all     | boolean          |                                         | func
- public | sqlite_fdw_get_connections    | SETOF record     | OUT server_name text, OUT valid boolean | func
- public | sqlite_fdw_handler            | fdw_handler      |                                         | func
- public | sqlite_fdw_sqlite_code_source | text             |                                         | func
- public | sqlite_fdw_sqlite_version     | integer          |                                         | func
- public | sqlite_fdw_validator          | void             | text[], oid                             | func
- public | sqlite_fdw_version            | integer          |                                         | func
-(8 rows)
+                                                                                                                                           List of functions
+ Schema |                 Name                 |                                                           Result data type                                                           |                                           Argument data types                                            | Type 
+--------+--------------------------------------+--------------------------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------+------
+ public | sqlite_fdw_db_application_id         | integer                                                                                                                              | server name, schema name DEFAULT 'main'::name                                                            | func
+ public | sqlite_fdw_db_attach                 | integer                                                                                                                              | server name, sqlite_db_string text, sqlite_db_alias name, integrity_check_mode text DEFAULT 'full'::text | func
+ public | sqlite_fdw_db_auto_vacuum            | character varying                                                                                                                    | server name, schema name DEFAULT 'main'::name                                                            | func
+ public | sqlite_fdw_db_cache_size             | integer                                                                                                                              | server name, schema name DEFAULT 'main'::name                                                            | func
+ public | sqlite_fdw_db_cache_spill            | integer                                                                                                                              | server name, schema name DEFAULT 'main'::name                                                            | func
+ public | sqlite_fdw_db_detach                 | void                                                                                                                                 | server name, sqlite_db_alias name                                                                        | func
+ public | sqlite_fdw_db_encoding               | character varying                                                                                                                    | server name                                                                                              | func
+ public | sqlite_fdw_db_exclusive_locking_mode | boolean                                                                                                                              | server name, schema name DEFAULT 'main'::name                                                            | func
+ public | sqlite_fdw_db_fkeys                  | boolean                                                                                                                              | server name, schema name DEFAULT 'main'::name                                                            | func
+ public | sqlite_fdw_db_fkeys_check            | TABLE(source_table name, rowid bigint, fk_from_table name, i integer)                                                                | server name, "table" name, schema name DEFAULT 'main'::name                                              | func
+ public | sqlite_fdw_db_fkeys_list             | TABLE(i integer, j integer, source_table name, column_name name, "constraint" name, onupd text, ondel text, f8 text)                 | server name, "table" name, schema name DEFAULT 'main'::name                                              | func
+ public | sqlite_fdw_db_journal_mode           | character varying                                                                                                                    | server name, schema name DEFAULT 'main'::name                                                            | func
+ public | sqlite_fdw_db_journal_size_limit     | integer                                                                                                                              | server name, schema name DEFAULT 'main'::name                                                            | func
+ public | sqlite_fdw_db_list                   | TABLE(sqlite_id integer, alias name, file text, readonly boolean, txn character varying)                                             | server name                                                                                              | func
+ public | sqlite_fdw_db_max_page_count         | integer                                                                                                                              | server name, schema name DEFAULT 'main'::name                                                            | func
+ public | sqlite_fdw_db_page_size              | integer                                                                                                                              | server name, schema name DEFAULT 'main'::name                                                            | func
+ public | sqlite_fdw_db_schema_version         | integer                                                                                                                              | server name, schema name DEFAULT 'main'::name                                                            | func
+ public | sqlite_fdw_db_secure_delete          | integer                                                                                                                              | server name, schema name DEFAULT 'main'::name                                                            | func
+ public | sqlite_fdw_db_synchronous_mode       | character varying                                                                                                                    | server name, schema name DEFAULT 'main'::name                                                            | func
+ public | sqlite_fdw_db_temp_store             | character varying                                                                                                                    | server name, schema name DEFAULT 'main'::name                                                            | func
+ public | sqlite_fdw_db_tmp_directory          | text                                                                                                                                 | server name, schema name DEFAULT 'main'::name                                                            | func
+ public | sqlite_fdw_db_user_version           | integer                                                                                                                              | server name, schema name DEFAULT 'main'::name                                                            | func
+ public | sqlite_fdw_db_wal_checkpoint         | TABLE(blocked boolean, mod_pages_in_wal integer, pages_suc_wr_to_db integer)                                                         | server name, schema name DEFAULT 'main'::name                                                            | func
+ public | sqlite_fdw_disconnect                | boolean                                                                                                                              | name                                                                                                     | func
+ public | sqlite_fdw_disconnect_all            | boolean                                                                                                                              |                                                                                                          | func
+ public | sqlite_fdw_get_connections           | SETOF record                                                                                                                         | OUT server_name text, OUT valid boolean                                                                  | func
+ public | sqlite_fdw_handler                   | fdw_handler                                                                                                                          |                                                                                                          | func
+ public | sqlite_fdw_index_list                | TABLE(sqlite_id integer, index_name name, "unique" boolean, source character varying, partial boolean)                               | server name, "table" name, schema name DEFAULT 'main'::name                                              | func
+ public | sqlite_fdw_mem                       | bigint                                                                                                                               |                                                                                                          | func
+ public | sqlite_fdw_rel_list                  | TABLE(schema name, "table" name, type text, ncol integer, no_rowid boolean, strict boolean)                                          | server name, schema name DEFAULT 'main'::name                                                            | func
+ public | sqlite_fdw_sqlite_code_source        | text                                                                                                                                 |                                                                                                          | func
+ public | sqlite_fdw_sqlite_version            | integer                                                                                                                              |                                                                                                          | func
+ public | sqlite_fdw_table_info                | TABLE(sqlite_id integer, "column" name, type text, "notnull" boolean, default_value text, pk boolean, column_mode character varying) | server name, "table" name, schema name DEFAULT 'main'::name                                              | func
+ public | sqlite_fdw_validator                 | void                                                                                                                                 | text[], oid                                                                                              | func
+ public | sqlite_fdw_version                   | integer                                                                                                                              |                                                                                                          | func
+(35 rows)
 
 --Testcase 154:
 SELECT * FROM public.sqlite_fdw_version();

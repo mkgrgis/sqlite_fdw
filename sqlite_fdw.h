@@ -345,9 +345,16 @@ extern const char hex_dig[];
 extern int	sqlite_set_transmission_modes(void);
 extern void sqlite_reset_transmission_modes(int nestlevel);
 extern const int sqlite_affinity_code(char* t);
+void sqlite_prepare_wrapper(ForeignServer *server,
+							sqlite3 * db, char *query,
+						    sqlite3_stmt * *result,
+						    const char **pzTail,
+						    bool is_cache);
+const char* sqlite_datatype(int t);
 
 /* option.c headers */
 extern sqlite_opt * sqlite_get_options(Oid foreigntableid);
+void validate_integrity_check_mode (const char *integrity_check_mode);
 
 /* depare.c headers */
 extern void sqlite_deparse_select_stmt_for_rel(StringInfo buf, PlannerInfo *root, RelOptInfo *rel,
@@ -437,6 +444,7 @@ sqlite3_int64 binstr2int64(const char *s);
 bool		listed_datatype (const char * tn, const char ** arr);
 blobOutput	sqlite_datum_to_blob (Datum value);
 bool		listed_datatype_oid (Oid atttypid, int32 atttypmod, const char **arr);
+char *		sqlite_text_value_to_pg_db_encoding(sqlite3_value *val);
 
 /* sqlite_gis.c headers */
 extern const char *postGisSpecificTypes[];
